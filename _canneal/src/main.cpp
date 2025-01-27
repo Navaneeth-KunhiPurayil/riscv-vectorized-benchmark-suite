@@ -46,7 +46,7 @@
 
 #ifdef USE_RISCV_VECTOR
 #include <riscv_vector.h>
-#include "../../common/vector_defines.h"
+#include "common/vector_defines.h"
 #endif
 
 #ifdef ENABLE_THREADS
@@ -93,8 +93,8 @@ int main (int argc, char * const argv[]) {
 	if(argc != 5 && argc != 6) {
 		cout << "Usage: " << argv[0] << " NTHREADS NSWAPS TEMP NETLIST [NSTEPS]" << endl;
 		exit(1);
-	}	
-	
+	}
+
 	//argument 1 is numthreads
 	int num_threads = atoi(argv[1]);
 	cout << "Threadcount: " << num_threads << endl;
@@ -104,7 +104,7 @@ int main (int argc, char * const argv[]) {
 		exit(1);
 	}
 #endif
-		
+
 	//argument 2 is the num moves / temp
 	int swaps_per_temp = atoi(argv[2]);
 	cout << swaps_per_temp << " swaps per temperature step" << endl;
@@ -112,11 +112,11 @@ int main (int argc, char * const argv[]) {
 	//argument 3 is the start temp
 	int start_temp =  atoi(argv[3]);
 	cout << "start temperature: " << start_temp << endl;
-	
+
 	//argument 4 is the netlist filename
 	string filename(argv[4]);
 	cout << "netlist filename: " << filename << endl;
-	
+
 	//argument 5 (optional) is the number of temperature steps before termination
 	int number_temp_steps = -1;
         if(argc == 6) {
@@ -127,13 +127,13 @@ int main (int argc, char * const argv[]) {
 
 	//now that we've read in the commandline, run the program
 	netlist my_netlist(filename);
-	
+
 
 	annealer_thread a_thread(&my_netlist,num_threads,swaps_per_temp,start_temp,number_temp_steps);
-	
+
 	//#ifdef USE_RISCV_VECTOR
     gettimeofday(&tv2, &tz);
-    elapsed1 = (double) (tv2.tv_sec-tv1.tv_sec) + (double) (tv2.tv_usec-tv1.tv_usec) * 1.e-6; 
+    elapsed1 = (double) (tv2.tv_sec-tv1.tv_sec) + (double) (tv2.tv_usec-tv1.tv_usec) * 1.e-6;
     printf("\n\nInitialization took %8.8lf secs   \n", elapsed1 );
 //#endif
 
@@ -166,7 +166,7 @@ int main (int argc, char * const argv[]) {
 
 //#ifdef USE_RISCV_VECTOR
     gettimeofday(&tv4, &tz);
-    elapsed2 = (double) (tv4.tv_sec-tv3.tv_sec) + (double) (tv4.tv_usec-tv3.tv_usec) * 1.e-6; 
+    elapsed2 = (double) (tv4.tv_sec-tv3.tv_sec) + (double) (tv4.tv_usec-tv3.tv_usec) * 1.e-6;
     printf("\n\nthread.Run() %8.8lf secs   \n", elapsed2 );
 //#endif
 
@@ -174,7 +174,7 @@ int main (int argc, char * const argv[]) {
 #ifdef ENABLE_PARSEC_HOOKS
 	__parsec_roi_end();
 #endif
-	
+
 	cout << "Final routing is: " << my_netlist.total_routing_cost() << endl;
 
 #ifdef ENABLE_PARSEC_HOOKS

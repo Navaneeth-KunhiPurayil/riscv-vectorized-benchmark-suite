@@ -48,7 +48,7 @@ using std::endl;
 // RISC-V VECTOR Version by Cristóbal Ramírez Lazo, "Barcelona 2019"
 #ifdef USE_RISCV_VECTOR
 #include <riscv_vector.h>
-#include "../../common/vector_defines.h"
+#include "common/vector_defines.h"
 #endif
 
 //*****************************************************************************************
@@ -156,7 +156,8 @@ routing_cost_t annealer_thread::calculate_delta_routing_cost_vector(netlist_elem
         //int* mask;
         //mask = (int*)malloc(gvl*sizeof(int));
         //for(int i=0 ; i<=gvl ; i=i+2) { mask[i]=1;  mask[i+1]=0; }
-        _MMR_MASK_i32  xMask = _MM_CAST_i1_i32(_MM_LOAD_i32((int *)&mask[0],gvl));
+//        _MMR_MASK_i32  xMask = _MM_CAST_i1_i32(_MM_LOAD_i32((int *)&mask[0],gvl)); // gcc 13 does not support this
+        _MMR_MASK_i32  xMask     = _MM_LOAD_MASK_u32((const uint8_t *)&mask[0],gvl);
         _MMR_i32 xAFanin_loc     = _MM_MERGE_i32(_MM_SET_i32(a_loc->y,gvl),_MM_SET_i32(a_loc->x,gvl),xMask,gvl);
         _MMR_i32 xBFanin_loc     = _MM_MERGE_i32(_MM_SET_i32(b_loc->y,gvl),_MM_SET_i32(b_loc->x,gvl),xMask,gvl);
 
@@ -206,4 +207,3 @@ bool annealer_thread::keep_going(int temp_steps_completed, int accepted_good_mov
 
     return rv;
 }
-

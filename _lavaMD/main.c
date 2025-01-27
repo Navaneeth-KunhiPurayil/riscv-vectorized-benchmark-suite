@@ -32,7 +32,7 @@
 //#include "./util/timer/timer.h"			// (in path specified here)
 #include "./util/num/num.h"				// (in path specified here)
 
-#include "../common/riscv_util.h"
+#include "common/riscv_util.h"
 //======================================================================================================================================================150
 //	MAIN FUNCTION HEADER
 //======================================================================================================================================================150
@@ -44,9 +44,9 @@
 //======================================================================================================================================================150
 
 #ifdef USE_RISCV_VECTOR
-#include "./kernel/kernel_vector.h"				// (in library path specified here)
+#include "kernel_vector.h"				// (in library path specified here)
 #else
-#include "./kernel/kernel_cpu.h"				// (in library path specified here)
+#include "kernel_cpu.h"				// (in library path specified here)
 #endif
 
 //#define OUTPUT
@@ -55,8 +55,8 @@
 //	MAIN FUNCTION
 //========================================================================================================================================================================================================200
 
-int 
-main(	int argc, 
+int
+main(	int argc,
 		char *argv [])
 {
 
@@ -251,8 +251,8 @@ main(	int argc,
 								box_cpu[nh].nei[box_cpu[nh].nn].x = (k+n);
 								box_cpu[nh].nei[box_cpu[nh].nn].y = (j+m);
 								box_cpu[nh].nei[box_cpu[nh].nn].z = (i+l);
-								box_cpu[nh].nei[box_cpu[nh].nn].number =	(box_cpu[nh].nei[box_cpu[nh].nn].z * dim_cpu.boxes1d_arg * dim_cpu.boxes1d_arg) + 
-																			(box_cpu[nh].nei[box_cpu[nh].nn].y * dim_cpu.boxes1d_arg) + 
+								box_cpu[nh].nei[box_cpu[nh].nn].number =	(box_cpu[nh].nei[box_cpu[nh].nn].z * dim_cpu.boxes1d_arg * dim_cpu.boxes1d_arg) +
+																			(box_cpu[nh].nei[box_cpu[nh].nn].y * dim_cpu.boxes1d_arg) +
 																			 box_cpu[nh].nei[box_cpu[nh].nn].x;
 								box_cpu[nh].nei[box_cpu[nh].nn].offset = box_cpu[nh].nei[box_cpu[nh].nn].number * NUMBER_PAR_PER_BOX;
 

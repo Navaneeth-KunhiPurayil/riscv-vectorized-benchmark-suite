@@ -26,14 +26,14 @@ extern "C" {
 //	MAIN FUNCTION HEADER
 //======================================================================================================================================================150
 
-#include "./../main.h"								// (in the main program folder)	needed to recognized input variables
+#include "main.h"								// (in the main program folder)	needed to recognized input variables
 
 //======================================================================================================================================================150
 //	UTILITIES
 //======================================================================================================================================================150
 
 //#include "./../util/timer/timer.h"					// (in library path specified to compiler)	needed by timer
-#include "../../common/riscv_util.h"
+#include "common/riscv_util.h"
 //======================================================================================================================================================150
 //	KERNEL_CPU FUNCTION HEADER
 //======================================================================================================================================================150
@@ -44,7 +44,9 @@ extern "C" {
 //	PLASMAKERNEL_GPU
 //========================================================================================================================================================================================================200
 
-void  kernel_cpu(	par_str par, 
+#ifdef USE_RISCV_VECTOR
+
+void  kernel_cpu(	par_str par,
 					dim_str dim,
 					box_str* box,
 					FOUR_VECTOR* rv,
@@ -81,12 +83,12 @@ void  kernel_cpu(	par_str par,
 
 	// neighbor box
 	int pointer;
-	long first_j; 
+	long first_j;
 	FOUR_VECTOR* rB;
 	fp* qB;
 
 	// common
-	fp r2; 
+	fp r2;
 	fp u2;
 	fp fs;
 	fp vij;
@@ -139,7 +141,7 @@ void  kernel_cpu(	par_str par,
 		//------------------------------------------------------------------------------------------100
 		//	Do for the # of (home+neighbor) boxes
 		//------------------------------------------------------------------------------------------100
-		for (k=0; k<(1+box[l].nn); k++) 
+		for (k=0; k<(1+box[l].nn); k++)
 		{
 
 			//----------------------------------------50
@@ -157,7 +159,7 @@ void  kernel_cpu(	par_str par,
 			//	neighbor box - box parameters
 			//----------------------------------------50
 
-			first_j = box[pointer].offset; 
+			first_j = box[pointer].offset;
 
 			//----------------------------------------50
 			//	neighbor box - distance, force, charge and type parameters
@@ -201,7 +203,7 @@ void  kernel_cpu(	par_str par,
 					xrB_x = _MM_LOAD_STRIDE_f32(&rB[j].x,16,gvl);
 					xrB_y = _MM_LOAD_STRIDE_f32(&rB[j].y,16,gvl);
 					xrB_z = _MM_LOAD_STRIDE_f32(&rB[j].z,16,gvl);
-					//r2 = rA[i].v + rB[j].v - DOT(rA[i],rB[j]); 
+					//r2 = rA[i].v + rB[j].v - DOT(rA[i],rB[j]);
 					xr2    = _MM_ADD_VF_f32(xrB_v, rA[i].v, gvl);
 					xDOT   = _MM_MUL_VF_f32(xrB_x, rA[i].x, gvl);
 					xDOT   = _MM_MACC_VF_f32(xDOT,rA[i].y,xrB_y,gvl);
@@ -213,11 +215,11 @@ void  kernel_cpu(	par_str par,
 					xvij   = _MM_EXP_f32(_MM_VFSGNJN_f32(xu2,xu2,gvl),gvl);
 					//fs = 2.*vij;
 					xfs    = _MM_MUL_f32(_MM_SET_f32(2.0f,gvl), xvij,gvl);
-					//d.x = rA[i].x  - rB[j].x; 
+					//d.x = rA[i].x  - rB[j].x;
 					xd_x   = _MM_SUB_f32(_MM_SET_f32(rA[i].x,gvl), xrB_x,gvl);
-					//d.y = rA[i].y  - rB[j].y; 
+					//d.y = rA[i].y  - rB[j].y;
 					xd_y   = _MM_SUB_f32(_MM_SET_f32(rA[i].y,gvl), xrB_y,gvl);
-					//d.z = rA[i].z  - rB[j].z; 
+					//d.z = rA[i].z  - rB[j].z;
 					xd_z   = _MM_SUB_f32(_MM_SET_f32(rA[i].z,gvl), xrB_z,gvl);
 					//fxij=fs*d.x;
 					xfxij  = _MM_MUL_f32(xfs, xd_x,gvl);
@@ -270,6 +272,8 @@ void  kernel_cpu(	par_str par,
 	printf("Total time:\n");
 	printf("%.12f s\n", 												(float) (time4-time0) / 1000000);
 } // main
+
+#endif
 
 #ifdef __cplusplus
 }

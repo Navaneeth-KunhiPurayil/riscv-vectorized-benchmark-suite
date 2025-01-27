@@ -1,15 +1,15 @@
-/*                                  
+/*
  * Neiel Israel Leyva Santes
  * neiel.leyva@bsc.es
  * Barcelona Supercomputing Center
  *
  * SpMV Vector Implementation.
- * Sparse Matrix-Vector Multiplication (SpMV) is a mathematical operation 
+ * Sparse Matrix-Vector Multiplication (SpMV) is a mathematical operation
  * in which a sparse matrix is multiplied by a dense vector.
  *
- * Inputs: 
+ * Inputs:
  *      *tiny:   football.mtx
- *               M. Girvan and M. E. J. Newman, The network of American football games 
+ *               M. Girvan and M. E. J. Newman, The network of American football games
  *               between Division IA colleges during regular season Fall 2000.
  *      *small:  lhr07.mtx
  *               J. Mallya, Light hydrocarbon recovery. OK if ill conditioned, from a nonlinear solver.
@@ -25,26 +25,26 @@
 #include <stdbool.h>
 #include <math.h>
 #include <stdint.h>
-#include "../../common/riscv_util.h"
+#include "common/riscv_util.h"
 #define TOLERANCE 1e-6
 
-void spmv_intrinsics(const size_t nrows, double *a, uint64_t *ia, uint64_t *ja, double *x, double *y); 
-void spmv_serial(const size_t nrows, double *a, uint64_t *ia, uint64_t *ja, double *x, double *y); 
+void spmv_intrinsics(const size_t nrows, double *a, uint64_t *ia, uint64_t *ja, double *x, double *y);
+void spmv_serial(const size_t nrows, double *a, uint64_t *ia, uint64_t *ja, double *x, double *y);
 
 int main(int argc, char *argv[]){
-   
+
     FILE *f;
-    size_t M, N, NZ; // M:rows N:cols, NZ:non zero values   
+    size_t M, N, NZ; // M:rows N:cols, NZ:non zero values
     uint64_t row, col;
     double value;
     long long start, end;
     bool verification = false;
-    
+
     if (argc < 2) {
         printf("Usage: <file.mtx> <file.verif> \n *.verif is optional \n");
         return 1;
     }
-    
+
     if (argv[2] != NULL) verification = true;
 
     if ((f = fopen(argv[1], "r")) == NULL) {
@@ -59,7 +59,7 @@ int main(int argc, char *argv[]){
             break;
         }
     }
-    
+
     uint64_t *ia = (uint64_t *) calloc((M+1) , sizeof(uint64_t));
     uint64_t *ja = (uint64_t *) malloc(NZ * sizeof(uint64_t));
     double *a = (double *) malloc(NZ * sizeof(double));
@@ -71,7 +71,7 @@ int main(int argc, char *argv[]){
     for (size_t i = 0; i < NZ; i++) {
         if (fscanf(f, "%lu %lu %lf", &col, &row, &value) != 3) {
             printf("Error reading file at line %zu\n", i);
-            break; 
+            break;
         }
         ja[i] = col;
         a[i] = value;
@@ -81,9 +81,9 @@ int main(int argc, char *argv[]){
                 currentRow++;
                 ia[currentRow]=i;
             }
-        } 
+        }
     }
-    
+
     if(currentRow < M-1){
         int diff = M - currentRow;
         for(int j=0;j < diff; j++) {
@@ -93,9 +93,9 @@ int main(int argc, char *argv[]){
     }
     ia[M]=NZ;
 
-    
+
     fclose(f);
-        
+
     double *verif = (double *) malloc(M * sizeof(double));
 
     if(verification == true){
@@ -124,7 +124,7 @@ int main(int argc, char *argv[]){
     printf("spmv_intrinsics time: %f\n", elapsed_time(start, end));
 #else // !USE_RISCV_VECTOR
     start = get_time();
-    spmv_serial(M, a, ia, ja, x, y); 
+    spmv_serial(M, a, ia, ja, x, y);
     end = get_time();
     printf("spmv_serial time: %f\n", elapsed_time(start, end));
 #endif

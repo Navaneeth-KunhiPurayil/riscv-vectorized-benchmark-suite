@@ -93,9 +93,9 @@ void test_4D_result(int n, double (*y)[n][n][n], double (*y_ref)[n][n][n])
 void clear_4D(int n, double (*X)[n][n][n])
 {
    int i, j, k;
-   for (i = 0; i<n; i++) 
+   for (i = 0; i<n; i++)
       for (j = 0; j<n; j++)
-         for (k = 0; k<n; k++) { 
+         for (k = 0; k<n; k++) {
             X[0][i][j][k] = 0.0; X[1][i][j][k] = 0.0; X[2][i][j][k] = 0.0;
          }
 }
@@ -113,7 +113,7 @@ void init_X (int n, double (*X)[n][n][n])
          for (k = 0; k<n; k++) {
            X[0][i][j][k] = i;
            X[1][i][j][k] = j;
-           X[2][i][j][k] = k; 
+           X[2][i][j][k] = k;
 
 	   Xcenter[0] += X[0][i][j][k];
            Xcenter[1] += X[1][i][j][k];
@@ -126,9 +126,9 @@ void init_X (int n, double (*X)[n][n][n])
 
 
 
-//   X[n/2][n/2][n/2][0] += 0.5; X[n/2][n/2][n/2][1] += 0.5; X[n/2][n/2][n/2][2] += 0.5; 
-//   X[n/2][n/2][n/2][0] += 0.5; X[n/2][n/2][n/2][1] += 0.5; 
-//   X[n/2][n/2][n/2][0] += 0.5;  
+//   X[n/2][n/2][n/2][0] += 0.5; X[n/2][n/2][n/2][1] += 0.5; X[n/2][n/2][n/2][2] += 0.5;
+//   X[n/2][n/2][n/2][0] += 0.5; X[n/2][n/2][n/2][1] += 0.5;
+//   X[n/2][n/2][n/2][0] += 0.5;
 }
 
 //make sure the boundary nodes are fixed
@@ -139,43 +139,43 @@ void boundary(int n, double (*X)[n][n][n], double (*V)[n][n][n])
    i = 0;
    for (j = 0; j<n; j++) {
       for (k = 0; k<n; k++) {
-         X[0][i][j][k] = i;   X[1][i][j][k] = j;   X[2][i][j][k] = k; 
-         V[0][i][j][k] = 0.0; V[1][i][j][k] = 0.0; V[2][i][j][k] = 0.0; 
+         X[0][i][j][k] = i;   X[1][i][j][k] = j;   X[2][i][j][k] = k;
+         V[0][i][j][k] = 0.0; V[1][i][j][k] = 0.0; V[2][i][j][k] = 0.0;
       }
    }
    j = 0;
    for (i = 0; i<n; i++) {
       for (k = 0; k<n; k++) {
-         X[0][i][j][k] = i;   X[1][i][j][k] = j;   X[2][i][j][k] = k; 
-         V[0][i][j][k] = 0.0; V[1][i][j][k] = 0.0; V[2][i][j][k] = 0.0; 
+         X[0][i][j][k] = i;   X[1][i][j][k] = j;   X[2][i][j][k] = k;
+         V[0][i][j][k] = 0.0; V[1][i][j][k] = 0.0; V[2][i][j][k] = 0.0;
       }
    }
    k = 0;
    for (i = 0; i<n; i++) {
       for (j = 0; j<n; j++) {
-         X[0][i][j][k] = i;   X[1][i][j][k] = j;   X[2][i][j][k] = k; 
-         V[0][i][j][k] = 0.0; V[1][i][j][k] = 0.0; V[2][i][j][k] = 0.0; 
+         X[0][i][j][k] = i;   X[1][i][j][k] = j;   X[2][i][j][k] = k;
+         V[0][i][j][k] = 0.0; V[1][i][j][k] = 0.0; V[2][i][j][k] = 0.0;
       }
    }
    k = n-1;
    for (i = 0; i<n; i++) {
       for (j = 0; j<n; j++) {
-         X[0][i][j][k] = i;   X[1][i][j][k] = j;   X[2][i][j][k] = k; 
-         V[0][i][j][k] = 0.0; V[1][i][j][k] = 0.0; V[2][i][j][k] = 0.0; 
+         X[0][i][j][k] = i;   X[1][i][j][k] = j;   X[2][i][j][k] = k;
+         V[0][i][j][k] = 0.0; V[1][i][j][k] = 0.0; V[2][i][j][k] = 0.0;
       }
    }
    i = n-1;
    for (j = 0; j<n; j++) {
       for (k = 0; k<n; k++) {
-         X[0][i][j][k] = i;   X[1][i][j][k] = j;   X[2][i][j][k] = k; 
-         V[0][i][j][k] = 0.0; V[1][i][j][k] = 0.0; V[2][i][j][k] = 0.0; 
+         X[0][i][j][k] = i;   X[1][i][j][k] = j;   X[2][i][j][k] = k;
+         V[0][i][j][k] = 0.0; V[1][i][j][k] = 0.0; V[2][i][j][k] = 0.0;
       }
    }
    j = n-1;
    for (i = 0; i<n; i++) {
       for (k = 0; k<n; k++) {
-         X[0][i][j][k] = i;   X[1][i][j][k] = j;   X[2][i][j][k] = k; 
-         V[0][i][j][k] = 0.0; V[1][i][j][k] = 0.0; V[2][i][j][k] = 0.0; 
+         X[0][i][j][k] = i;   X[1][i][j][k] = j;   X[2][i][j][k] = k;
+         V[0][i][j][k] = 0.0; V[1][i][j][k] = 0.0; V[2][i][j][k] = 0.0;
       }
    }
 
@@ -204,9 +204,9 @@ void force_contribution(int n, double (*X)[n][n][n], double (*F)[n][n][n],
    sign = (neig_j > j ? sign : 1.0);
    sign = (neig_k > k ? sign : 1.0);
    spring_F = 0.25 * spring_K*(dl-1);
-   FX = sign * spring_F * dx/dl; 
+   FX = sign * spring_F * dx/dl;
    FY = sign * spring_F * dy/dl;
-   FZ = sign * spring_F * dz/dl; 
+   FZ = sign * spring_F * dz/dl;
    F[0][i][j][k] += FX;
    F[1][i][j][k] += FY;
    F[2][i][j][k] += FZ;
@@ -262,7 +262,7 @@ int main(int argc, char *argv[])
    init_X(N, X);
 //   printf ("\nInitial Positions\n"); print_4D(N, "X", X); printf ("\n\n");
    printf("Set initial speed\n");
-   V[0][N/2][N/2][N/2] = 0.1;  V[1][N/2][N/2][N/2] = 0.1;  V[2][N/2][N/2][N/2] = 0.1;  
+   V[0][N/2][N/2][N/2] = 0.1;  V[1][N/2][N/2][N/2] = 0.1;  V[2][N/2][N/2][N/2] = 0.1;
 
 //   if ((output_fp = fopen("somier.prv", "w")) == NULL) {
 //        err = errno;
@@ -270,7 +270,7 @@ int main(int argc, char *argv[])
 //        exit(EXIT_FAILURE);
 //   }
 //   fprintf(output_fp,"#Paraver (27/06/2017 at 16:16):%d_ns:1(1):1:1:(1:1)\n", (int)(ntsteps*dt*1000));
-//   i=j=k=N/2; 
+//   i=j=k=N/2;
 //   fprintf(output_fp, "2:%d:1:%d:1:%d:%d:%d:%d:%d:%d:%d\n", 1, 1, (int)((double)nt*dt*1000), 80000000, (int)(X[i][j][k][0]*1000), 80000001,(int)(X[i][j][k][1]*1000), 80000002, (int)(X[i][j][k][2]*1000));
 //   fprintf(output_fp, "2:%d:1:%d:1:%d:%d:%d:%d:%d:%d:%d\n", 1, 1, (int)((double)nt*dt*1000), 90000000, (int)(V[i][j][k][0]*1000)+1000, 90000001, (int)(V[i][j][k][1]*1000)+1000, 90000002, (int)(V[i][j][k][2]*1000)+1000);
 
@@ -280,13 +280,13 @@ int main(int argc, char *argv[])
       if(nt%10 == 0) {
 //      capture_ref_result();
         printf ("t=%d ", nt);
-        printf ("XC= %f,%f,%f X[N/2-1] = %f,%f,%f  X[N/2] = %f,%f,%f V[N/2+1] = %f,%f,%f \n", 
-                         Xcenter[0], Xcenter[1], Xcenter[2], 
-			 X[0][N/2-1][N/2][N/2], X[1][N/2-1][N/2][N/2], X[2][N/2-1][N/2][N/2], 
-			 X[0][N/2][N/2][N/2], X[1][N/2][N/2][N/2], X[2][N/2][N/2][N/2], 
-			 X[0][N/2+1][N/2][N/2], X[1][N/2+1][N/2][N/2], X[2][N/2+1][N/2][N/2]); 
-//			 F[0][N/2][N/2][N/2], F[1][N/2][N/2][N/2], F[2][N/2][N/2][N/2], 
-//			 V[0][N/2][N/2][N/2], V[1][N/2][N/2][N/2], V[2][N/2][N/2][N/2]); 
+        printf ("XC= %f,%f,%f X[N/2-1] = %f,%f,%f  X[N/2] = %f,%f,%f V[N/2+1] = %f,%f,%f \n",
+                         Xcenter[0], Xcenter[1], Xcenter[2],
+			 X[0][N/2-1][N/2][N/2], X[1][N/2-1][N/2][N/2], X[2][N/2-1][N/2][N/2],
+			 X[0][N/2][N/2][N/2], X[1][N/2][N/2][N/2], X[2][N/2][N/2][N/2],
+			 X[0][N/2+1][N/2][N/2], X[1][N/2+1][N/2][N/2], X[2][N/2+1][N/2][N/2]);
+//			 F[0][N/2][N/2][N/2], F[1][N/2][N/2][N/2], F[2][N/2][N/2][N/2],
+//			 V[0][N/2][N/2][N/2], V[1][N/2][N/2][N/2], V[2][N/2][N/2][N/2]);
 //        printf ("\n ");
       }
 
@@ -296,7 +296,7 @@ int main(int argc, char *argv[])
 
 
 
-/*	if(V[N/2][N/2][N/2][2] > 0.7999) { 
+/*	if(V[N/2][N/2][N/2][2] > 0.7999) {
 		printf ("t=%d\t", nt);
 		printf ("V= %f,%f,%f X= %f,%f,%f XC= %f,%f,%f\n", V[N/2][N/2][N/2][0], V[N/2][N/2][N/2][1], V[N/2][N/2][N/2][2], X[N/2][N/2][N/2][0], X[N/2][N/2][N/2][1], X[N/2][N/2][N/2][2], Xcenter[0], Xcenter[1], Xcenter[2]);
 
@@ -347,17 +347,79 @@ int main(int argc, char *argv[])
       Xcenter[0] /= (N*N*N);
       Xcenter[1] /= (N*N*N);
       Xcenter[2] /= (N*N*N);
-		
 
 
-//      printf ("X+1= %3.3f,%3.3f,%3.3f\n", X[N/2][N/2][N/2][0], X[N/2][N/2][N/2][1], X[N/2][N/2][N/2][2]); 
-//      printf ("V= %3.3f,%3.3f,%3.3f\t X+1= %3.3f,%3.3f,%3.3f\n", V[N/2][N/2][N/2][0], V[N/2][N/2][N/2][1], V[N/2][N/2][N/2][2], X[N/2][N/2][N/2][0], X[N/2][N/2][N/2][1], X[N/2][N/2][N/2][2]); 
-//      i=j=k=N/2; 
+
+//      printf ("X+1= %3.3f,%3.3f,%3.3f\n", X[N/2][N/2][N/2][0], X[N/2][N/2][N/2][1], X[N/2][N/2][N/2][2]);
+//      printf ("V= %3.3f,%3.3f,%3.3f\t X+1= %3.3f,%3.3f,%3.3f\n", V[N/2][N/2][N/2][0], V[N/2][N/2][N/2][1], V[N/2][N/2][N/2][2], X[N/2][N/2][N/2][0], X[N/2][N/2][N/2][1], X[N/2][N/2][N/2][2]);
+//      i=j=k=N/2;
 //      fprintf(output_fp, "2:%d:1:%d:1:%d:%d:%d:%d:%d:%d:%d\n", 1, 1, (int)((double)nt*dt*1000), 80000000, (int)(X[i][j][k][0]*1000), 80000001,(int)(X[i][j][k][1]*1000), 80000002, (int)(X[i][j][k][2]*1000));
 //      fprintf(output_fp, "2:%d:1:%d:1:%d:%d:%d:%d:%d:%d:%d\n", 1, 1, (int)((double)nt*dt*1000), 90000000, (int)(V[i][j][k][0]*1000)+1000, 90000001, (int)(V[i][j][k][1]*1000)+1000, 90000002, (int)(V[i][j][k][2]*1000)+1000);
 
    }
 	printf ("\tV= %f, %f, %f\t\t X= %f, %f, %f\n",
-		V[0][N/2][N/2][N/2], V[1][N/2][N/2][N/2], V[2][N/2][N/2][N/2], 
+		V[0][N/2][N/2][N/2], V[1][N/2][N/2][N/2], V[2][N/2][N/2][N/2],
 	        X[0][N/2][N/2][N/2], X[1][N/2][N/2][N/2], X[2][N/2][N/2][N/2]);
+}
+
+
+inline void acceleration(int n, double (*A)[n][n][n], double (*F)[n][n][n], double M)
+{
+   int i, j, k;
+//#dear compiler: please fuse next two loops if you can
+   for (i = 0; i<n; i++)
+      for (j = 0; j<n; j++)
+         for (k = 0; k<n; k++) {
+            A[0][i][j][k]= F[0][i][j][k]/M;
+            A[1][i][j][k]= F[1][i][j][k]/M;
+            A[2][i][j][k]= F[2][i][j][k]/M;
+	 }
+
+}
+
+
+inline void velocities(int n, double (*V)[n][n][n], double (*A)[n][n][n], double dt)
+{
+   int i, j, k;
+//#dear compiler: please fuse next two loops if you can
+   for (i = 0; i<n; i++)
+//      #pragma omp task
+//      #pragma omp unroll
+      for (j = 0; j<n; j++) {
+	 #pragma omp simd
+         for (k = 0; k<n; k++) {
+               V[0][i][j][k] += A[0][i][j][k]*dt;
+               V[1][i][j][k] += A[1][i][j][k]*dt;
+               V[2][i][j][k] += A[2][i][j][k]*dt;
+            }
+     }
+}
+
+void positions(int n, double (*X)[n][n][n], double (*V)[n][n][n], double dt)
+{
+   int i, j, k;
+//#dear compiler: please fuse next two loops if you can
+   for (i = 0; i<n; i++)
+      for (j = 0; j<n; j++)
+         for (k = 0; k<n; k++) {
+               X[0][i][j][k] += V[0][i][j][k]*dt;
+               X[1][i][j][k] += V[1][i][j][k]*dt;
+               X[2][i][j][k] += V[2][i][j][k]*dt;
+            }
+}
+
+void compute_stats(int n, double (*X)[n][n][n], double Xcenter[3])
+{
+   for (int i = 0; i<n; i++) {
+      for (int j = 0; j<n; j++) {
+         for (int k = 0; k<n; k++) {
+             Xcenter[0] += X[0][i][j][k];
+             Xcenter[1] += X[1][i][j][k];
+             Xcenter[2] += X[2][i][j][k];
+         }
+      }
+   }
+   Xcenter[0] /= (n*n*n);
+   Xcenter[1] /= (n*n*n);
+   Xcenter[2] /= (n*n*n);
 }

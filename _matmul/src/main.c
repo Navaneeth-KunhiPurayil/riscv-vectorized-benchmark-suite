@@ -1,5 +1,5 @@
 /*************************************************************************
-** * * * * * * * * *  MATRIX MULTIPLICATION * * * * * * * * * * * * * * ** 
+** * * * * * * * * *  MATRIX MULTIPLICATION * * * * * * * * * * * * * * **
 **************************************************************************/
 
 #include <stdlib.h>
@@ -8,9 +8,9 @@
 #include <assert.h>
 #include <stdbool.h>
 
-#include "../../common/riscv_util.h"
+#include "common/riscv_util.h"
 
-#define DATA_TYPE 
+#define DATA_TYPE
 typedef double data_t;
 
 int read_matrix_dimensions(FILE *file, size_t *M, size_t *K, size_t *N);
@@ -29,7 +29,7 @@ int main (int argc, char **argv)
         printf("Usage:\n\t%s <inputFile>\n", argv[0]);
         exit(1);
     }
-    
+
     //Read input data from file
     char *inputFile = argv[1];
     FILE *file = fopen(inputFile, "r");
@@ -37,21 +37,21 @@ int main (int argc, char **argv)
       printf("ERROR: Unable to open file `%s'.\n", inputFile);
       exit(1);
     }
-   
-    size_t M, K, N; 
+
+    size_t M, K, N;
     char line[16];
-    
+
     if (read_matrix_dimensions(file, &M, &K, &N)) {
         printf("Error reading the matrix dimensions.\n");
     } else{
         printf("Matrix Dimensions: M %zu, K %zu, N %zu \n", M, K, N);
-    } 
-    
+    }
+
     data_t *M1          = (data_t*)malloc(M*K*sizeof(data_t));
     data_t *M2          = (data_t*)malloc(K*N*sizeof(data_t));
     data_t *result      = (data_t*)malloc(M*N*sizeof(data_t));
     data_t *reference   = (data_t*)malloc(M*N*sizeof(data_t));
-    
+
     // Read Matrix A
     read_vector(file, M1, M*K, K);
 
@@ -66,7 +66,7 @@ int main (int argc, char **argv)
     fclose(file);
 
     //**************************************************
-    
+
     long long start,end;
     start = get_time();
 
@@ -75,7 +75,7 @@ int main (int argc, char **argv)
 
     matrixmul_intrinsics(M1, M2, result, N, M, K);
     printf("matrixmul_intrinsics done\n");
-    
+
     end = get_time();
     printf("matrixmul_intrinsics time: %f\n", elapsed_time(start, end));
 
@@ -83,12 +83,12 @@ int main (int argc, char **argv)
 
     matmul_serial(M1,M2,result, N, M, K);
     printf("matmul_serial done\n");
-    
+
     end = get_time();
     printf("matmul_serial time: %f\n", elapsed_time(start, end));
 #endif
 
-    
+
     if(compare(M, N, result, reference)){
         printf("Verification failed!\n");
         return 1;

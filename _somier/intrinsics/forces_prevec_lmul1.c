@@ -12,11 +12,11 @@
 #include <inttypes.h>
 #include <errno.h>
 #include <assert.h>
-#include "../somier.h"
+#include "somier.h"
 #include "somier_v.h"
 
 #ifdef USE_RISCV_VECTOR
-#include "../common/vector_defines.h"
+#include "common/vector_defines.h"
 #endif
 
 static int count=0;
@@ -44,6 +44,7 @@ void force_contr_prevec(int n, double (*X)[n][n][n], double (*F)[n][n][n], int i
 
    double buffer[1024];
 
+#ifdef USE_RISCV_VECTOR
 inline void force_contr_vec(int n, double (*X)[n][n][n], double (*F)[n][n][n], int i, int j, int neig_i, int neig_j);
 void force_contr_vec(int n, double (*X)[n][n][n], double (*F)[n][n][n], int i, int j, int neig_i, int neig_j)
 {
@@ -160,7 +161,7 @@ void k_force_contr_vec(int n, double (*X)[n][n][n], double (*F)[n][n][n], int i,
       k += gvl;
    }
 }
-
+#endif
 
 void k_force_contr_prevec(int n, double (*X)[n][n][n], double (*F)[n][n][n], int i, int j)
 {
@@ -199,6 +200,7 @@ __attribute__((noinline)) void emit_event()
 }
 
 
+#ifdef USE_RISCV_VECTOR
 void compute_forces_prevec(int n, double (*X)[n][n][n], double (*F)[n][n][n])
 {
    for (int i=1; i<n-1; i++) {
@@ -212,4 +214,4 @@ void compute_forces_prevec(int n, double (*X)[n][n][n], double (*F)[n][n][n])
       }
    }
 }
-
+#endif

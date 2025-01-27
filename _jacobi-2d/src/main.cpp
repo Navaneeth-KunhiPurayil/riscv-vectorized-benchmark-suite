@@ -27,7 +27,7 @@
 
 
 #ifdef USE_RISCV_VECTOR
-#include "../../common/vector_defines.h"
+#include "common/vector_defines.h"
 #endif
 
 using namespace std;
@@ -70,7 +70,7 @@ void kernel_jacobi_2d_vector(int tsteps,int n, DATA_TYPE **A,DATA_TYPE **B)
 
     xConstant = _MM_SET_f64(0.20f,gvl);
 
-    for (int j=1; j<=size_x; j=j+gvl) 
+    for (int j=1; j<=size_x; j=j+gvl)
     {
         gvl = _MMR_VSETVL_E64M1(size_y-j+1);
 
@@ -78,7 +78,7 @@ void kernel_jacobi_2d_vector(int tsteps,int n, DATA_TYPE **A,DATA_TYPE **B)
         xU = _MM_LOAD_f64(&A[1][j],gvl);
         xUbottom = _MM_LOAD_f64(&A[2][j],gvl);
 
-        for (int i=1; i<=size_y; i++) 
+        for (int i=1; i<=size_y; i++)
         {
             if(i!=1)
             {
@@ -86,7 +86,7 @@ void kernel_jacobi_2d_vector(int tsteps,int n, DATA_TYPE **A,DATA_TYPE **B)
                 xU =  xUbottom;
                 xUbottom =  _MM_LOAD_f64(&A[i+1][j],gvl);
             }
-            izq = A[i][j-1]; 
+            izq = A[i][j-1];
             der = A[i][j+gvl];
             xUleft = _MM_VSLIDE1UP_f64(xU,izq,gvl);
             xUright = _MM_VSLIDE1DOWN_f64(xU,der,gvl);

@@ -1,7 +1,7 @@
 /**
  * @file ex_particle_OPENMP_seq.c
  * @author Michael Trotter & Matt Goodrum
- * @brief Particle filter implementation in C/OpenMP 
+ * @brief Particle filter implementation in C/OpenMP
  */
 
 /*************************************************************************
@@ -16,14 +16,14 @@
 #include <string.h>
 #include <math.h>
 #include <sys/time.h>
-#include <time.h> 
+#include <time.h>
 
 #ifdef USE_RISCV_VECTOR
 #include <riscv_vector.h>
-#include "../../common/vector_defines.h"
+#include "common/vector_defines.h"
 #endif
 
-#include "../../common/riscv_util.h"
+#include "common/riscv_util.h"
 
 //#include <omp.h>
 #include <limits.h>
@@ -41,7 +41,7 @@ int A = 1103515245;
 */
 int C = 12345;
 
-/** 
+/**
 * Takes in a double and returns an integer that approximates to that double
 * @return if the mantissa < .5 => return value < input value; else return value > input value
 */
@@ -95,7 +95,7 @@ inline _MMR_f64 randu_vector(int * seed, int index ,unsigned long int gvl)
     _MMR_i32mf2    xA = _MM_SET_i32mf2(A,gvl);
     _MMR_i32mf2    xC = _MM_SET_i32mf2(C,gvl);
     _MMR_i32mf2    xM = _MM_SET_i32mf2((int)M,gvl);
-    
+
     xseed =  _MM_MUL_i32mf2(xseed,xA,gvl);
     xseed =  _MM_ADD_i32mf2(xseed,xC,gvl);
     xseed =  _MM_REM_i32mf2(xseed,xM,gvl);
@@ -133,7 +133,7 @@ inline _MMR_f64 randn_vector(int * seed, int index, unsigned long int gvl){
     _MMR_f64    xV = randu_vector(seed,index,gvl);
     _MMR_f64    xCosine;
     _MMR_f64    xRt;
-    
+
     xV = _MM_MUL_f64(_MM_SET_f64(PI*2.0,gvl),xV,gvl);
     xCosine =_MM_COS_f64(xV,gvl);
     xU = _MM_LOG_f64(xU,gvl);
@@ -274,7 +274,7 @@ void videoSequence(int * I, int IszX, int IszY, int Nfr, int * seed){
     int x0 = (int)roundDouble(IszY/2.0);
     int y0 = (int)roundDouble(IszX/2.0);
     I[x0 *IszY *Nfr + y0 * Nfr  + 0] = 1;
-    
+
     /*move point*/
     int xk, yk, pos;
     for(k = 1; k < Nfr; k++){
@@ -285,7 +285,7 @@ void videoSequence(int * I, int IszX, int IszY, int Nfr, int * seed){
         pos = 0;
         I[pos] = 1;
     }
-    
+
     /*dilate matrix*/
     int * newMatrix = (int *)malloc(sizeof(int)*IszX*IszY*Nfr);
     imdilate_disk(I, IszX, IszY, Nfr, 5, newMatrix);
@@ -298,7 +298,7 @@ void videoSequence(int * I, int IszX, int IszY, int Nfr, int * seed){
         }
     }
     free(newMatrix);
-    
+
     /*define background, add noise*/
     setIf(0, 100, I, &IszX, &IszY, &Nfr);
     setIf(1, 228, I, &IszX, &IszY, &Nfr);
@@ -396,13 +396,13 @@ int findIndexBin(double * CDF, int beginIndex, int endIndex, double value){
 * @param Nparticles The number of particles to be used
 */
 void particleFilter(int * I, int IszX, int IszY, int Nfr, int * seed, int Nparticles){
-    
+
     int max_size = IszX*IszY*Nfr;
     long long start = get_time();
     //original particle centroid
     double xe = roundDouble(IszY/2.0);
     double ye = roundDouble(IszX/2.0);
-    
+
     //expected object locations, compared to center
     int radius = 5;
     int diameter = radius*2 - 1;
@@ -418,10 +418,10 @@ void particleFilter(int * I, int IszX, int IszY, int Nfr, int * seed, int Nparti
     }
 
     //printf("countOnes = %d \n",countOnes); // 69
-    
+
     double * objxy = (double *)malloc(countOnes*2*sizeof(double));
     getneighbors(disk, countOnes, objxy, radius);
-    
+
     long long get_neighbors = get_time();
     printf("TIME TO GET NEIGHBORS TOOK: %f\n", elapsed_time(start, get_neighbors));
     //initial weights are all equal (1/Nparticles)
@@ -447,7 +447,7 @@ void particleFilter(int * I, int IszX, int IszY, int Nfr, int * seed, int Nparti
         arrayY[x] = ye;
     }
     int k;
-    
+
     printf("TIME TO SET ARRAYS TOOK: %f\n", elapsed_time(get_weights, get_time()));
     int indX, indY;
     for(k = 1; k < Nfr; k++){
@@ -468,7 +468,7 @@ void particleFilter(int * I, int IszX, int IszY, int Nfr, int * seed, int Nparti
             //compute the likelihood: remember our assumption is that you know
             // foreground and the background image intensity distribution.
             // Notice that we consider here a likelihood ratio, instead of
-            // p(z|x). It is possible in this case. why? a hometask for you.        
+            // p(z|x). It is possible in this case. why? a hometask for you.
             //calc ind
             for(y = 0; y < countOnes; y++){
                 indX = roundDouble(arrayX[x]) + objxy[y*2 + 1];
@@ -520,12 +520,12 @@ void particleFilter(int * I, int IszX, int IszY, int Nfr, int * seed, int Nparti
         double distance = sqrt( pow((double)(xe-(int)roundDouble(IszY/2.0)),2) + pow((double)(ye-(int)roundDouble(IszX/2.0)),2) );
         printf("%lf\n", distance);
         //display(hold off for now)
-        
+
         //pause(hold off for now)
-        
+
         //resampling
-        
-        
+
+
         CDF[0] = weights[0];
         for(x = 1; x < Nparticles; x++){
             CDF[x] = weights[x] + CDF[x-1];
@@ -540,22 +540,22 @@ void particleFilter(int * I, int IszX, int IszY, int Nfr, int * seed, int Nparti
         long long u_time = get_time();
         printf("TIME TO CALC U TOOK: %f\n", elapsed_time(cum_sum, u_time));
         int j, i;
-        
+
         //#pragma omp parallel for shared(CDF, Nparticles, xj, yj, u, arrayX, arrayY) private(i, j)
         for(j = 0; j < Nparticles; j++){
             i = findIndex(CDF, Nparticles, u[j]);
             if(i == -1)
-                    i = Nparticles-1;   
-            //printf("%d ", i);     
+                    i = Nparticles-1;
+            //printf("%d ", i);
             xj[j] = arrayX[i];
             yj[j] = arrayY[i];
-            
+
         }
-        //printf("\n"); 
+        //printf("\n");
 
         long long xyj_time = get_time();
         printf("TIME TO CALC NEW ARRAY X AND Y TOOK: %f\n", elapsed_time(u_time, xyj_time));
-        
+
         //#pragma omp parallel for shared(weights, Nparticles) private(x)
         for(x = 0; x < Nparticles; x++){
             //reassign arrayX and arrayY
@@ -581,14 +581,14 @@ void particleFilter(int * I, int IszX, int IszY, int Nfr, int * seed, int Nparti
 
 #ifdef USE_RISCV_VECTOR
 void particleFilter_vector(int * I, int IszX, int IszY, int Nfr, int * seed, int Nparticles){
-    
-    
+
+
     int max_size = IszX*IszY*Nfr;
     long long start = get_time();
     //original particle centroid
     double xe = roundDouble(IszY/2.0);
     double ye = roundDouble(IszX/2.0);
-    
+
     //expected object locations, compared to center
     int radius = 5;
     int diameter = radius*2 - 1;
@@ -604,10 +604,10 @@ void particleFilter_vector(int * I, int IszX, int IszY, int Nfr, int * seed, int
     }
 
     //printf("countOnes = %d \n",countOnes); // 69
-    
+
     double * objxy = (double *)malloc(countOnes*2*sizeof(double));
     getneighbors(disk, countOnes, objxy, radius);
-    
+
     long long get_neighbors = get_time();
     printf("TIME TO GET NEIGHBORS TOOK: %f\n", elapsed_time(start, get_neighbors));
     //initial weights are all equal (1/Nparticles)
@@ -654,7 +654,7 @@ void particleFilter_vector(int * I, int IszX, int IszY, int Nfr, int * seed, int
         _MM_STORE_f64(&arrayX[i],xArrayX,gvl);
         _MM_STORE_f64(&arrayY[i],xArrayY,gvl);
     }
-    
+
 
     _MMR_f64    xAux;
 
@@ -673,16 +673,16 @@ void particleFilter_vector(int * I, int IszX, int IszY, int Nfr, int * seed, int
             gvl     = __riscv_vsetvl_e64m1(Nparticles-x);
             xArrayX = _MM_LOAD_f64(&arrayX[x],gvl);
             xAux = randn_vector(seed, x,gvl);
-            xAux =  _MM_MUL_f64(xAux, _MM_SET_f64(5.0,gvl),gvl); 
-            xAux =  _MM_ADD_f64(xAux, _MM_SET_f64(1.0,gvl),gvl); 
-            xArrayX = _MM_ADD_f64(xAux, xArrayX ,gvl); 
+            xAux =  _MM_MUL_f64(xAux, _MM_SET_f64(5.0,gvl),gvl);
+            xAux =  _MM_ADD_f64(xAux, _MM_SET_f64(1.0,gvl),gvl);
+            xArrayX = _MM_ADD_f64(xAux, xArrayX ,gvl);
             _MM_STORE_f64(&arrayX[x],xArrayX,gvl);
-            
+
             xArrayY = _MM_LOAD_f64(&arrayY[x],gvl);
             xAux = randn_vector(seed, x,gvl);
-            xAux =  _MM_MUL_f64(xAux, _MM_SET_f64(2.0,gvl),gvl); 
-            xAux =  _MM_ADD_f64(xAux, _MM_SET_f64(-2.0,gvl),gvl); 
-            xArrayY = _MM_ADD_f64(xAux, xArrayY ,gvl); 
+            xAux =  _MM_MUL_f64(xAux, _MM_SET_f64(2.0,gvl),gvl);
+            xAux =  _MM_ADD_f64(xAux, _MM_SET_f64(-2.0,gvl),gvl);
+            xArrayY = _MM_ADD_f64(xAux, xArrayY ,gvl);
             _MM_STORE_f64(&arrayY[x],xArrayY,gvl);
         }
 
@@ -701,7 +701,7 @@ void particleFilter_vector(int * I, int IszX, int IszY, int Nfr, int * seed, int
             //compute the likelihood: remember our assumption is that you know
             // foreground and the background image intensity distribution.
             // Notice that we consider here a likelihood ratio, instead of
-            // p(z|x). It is possible in this case. why? a hometask for you.        
+            // p(z|x). It is possible in this case. why? a hometask for you.
             //calc ind
             for(y = 0; y < countOnes; y++){
                 indX = roundDouble(arrayX[x]) + objxy[y*2 + 1];
@@ -753,11 +753,11 @@ void particleFilter_vector(int * I, int IszX, int IszY, int Nfr, int * seed, int
         double distance = sqrt( pow((double)(xe-(int)roundDouble(IszY/2.0)),2) + pow((double)(ye-(int)roundDouble(IszX/2.0)),2) );
         printf("%lf\n", distance);
         //display(hold off for now)
-        
+
         //pause(hold off for now)
-        
+
         //resampling
-        
+
         CDF[0] = weights[0];
         for(x = 1; x < Nparticles; x++){
             CDF[x] = weights[x] + CDF[x-1];
@@ -771,7 +771,7 @@ void particleFilter_vector(int * I, int IszX, int IszY, int Nfr, int * seed, int
         }
         long long u_time = get_time();
         printf("TIME TO CALC U TOOK: %f\n", elapsed_time(cum_sum, u_time));
-        
+
         int j, i;
 
         _MMR_MASK_i64           xComp;
@@ -787,10 +787,11 @@ void particleFilter_vector(int * I, int IszX, int IszY, int Nfr, int * seed, int
         for(i = 0; i < Nparticles; i=i+gvl){
             gvl     = __riscv_vsetvl_e64m1(Nparticles-i);
             vector_complete = 0;
-            xMask   = _MM_CAST_i1_i64(_MM_SET_i64(0,gvl));
+//            xMask   = _MM_CAST_i1_i64(_MM_SET_i64(0,gvl)); // not supported by gcc 13
+            xMask   = _MM_VMXOR_i64(xMask,xMask,gvl);
             xArray  = _MM_SET_i64(Nparticles-1,gvl);
             xU      = _MM_LOAD_f64(&u[i],gvl);
-            for(j = 0; j < Nparticles; j++){    
+            for(j = 0; j < Nparticles; j++){
                 xCDF = _MM_SET_f64(CDF[j],gvl);
                 xComp = _MM_VFGE_f64(xCDF,xU,gvl);
                 xComp = _MM_VMXOR_i64(xComp,xMask,gvl);
@@ -816,11 +817,11 @@ void particleFilter_vector(int * I, int IszX, int IszY, int Nfr, int * seed, int
         for(j = 0; j < Nparticles; j++){
             i = findIndex(CDF, Nparticles, u[j]);
             if(i == -1)
-                    i = Nparticles-1;   
-            //printf("%d ", i);     
+                    i = Nparticles-1;
+            //printf("%d ", i);
             xj[j] = arrayX[i];
             yj[j] = arrayY[i];
-            
+
         }
         */
         //#pragma omp parallel for shared(CDF, Nparticles, xj, yj, u, arrayX, arrayY) private(i, j)
@@ -829,12 +830,12 @@ void particleFilter_vector(int * I, int IszX, int IszY, int Nfr, int * seed, int
             xj[j] = arrayX[i];
             yj[j] = arrayY[i];
         }
-        // for(j = 0; j < Nparticles; j++){ printf("%lf ", xj[i]); } printf("\n");  
+        // for(j = 0; j < Nparticles; j++){ printf("%lf ", xj[i]); } printf("\n");
         // for(j = 0; j < Nparticles; j++){ printf("%lf ", yj[i]); } printf("\n");
 
         long long xyj_time = get_time();
         printf("TIME TO CALC NEW ARRAY X AND Y TOOK: %f\n", elapsed_time(u_time, xyj_time));
-        
+
         //#pragma omp parallel for shared(weights, Nparticles) private(x)
         for(x = 0; x < Nparticles; x++){
             //reassign arrayX and arrayY
@@ -861,7 +862,7 @@ void particleFilter_vector(int * I, int IszX, int IszY, int Nfr, int * seed, int
 #endif
 
 int main(int argc, char * argv[]){
-    
+
     char* usage = "openmp.out -x <dimX> -y <dimY> -z <Nfr> -np <Nparticles>";
     //check number of arguments
     if(argc != 9)
@@ -874,48 +875,48 @@ int main(int argc, char * argv[]){
         printf( "%s\n",usage );
         return 0;
     }
-    
+
     int IszX, IszY, Nfr, Nparticles;
-    
+
     //converting a string to a integer
     if( sscanf( argv[2], "%d", &IszX ) == EOF ) {
        printf("ERROR: dimX input is incorrect");
        return 0;
     }
-    
+
     if( IszX <= 0 ) {
         printf("dimX must be > 0\n");
         return 0;
     }
-    
+
     //converting a string to a integer
     if( sscanf( argv[4], "%d", &IszY ) == EOF ) {
        printf("ERROR: dimY input is incorrect");
        return 0;
     }
-    
+
     if( IszY <= 0 ) {
         printf("dimY must be > 0\n");
         return 0;
     }
-    
+
     //converting a string to a integer
     if( sscanf( argv[6], "%d", &Nfr ) == EOF ) {
        printf("ERROR: Number of frames input is incorrect");
        return 0;
     }
-    
+
     if( Nfr <= 0 ) {
         printf("number of frames must be > 0\n");
         return 0;
     }
-    
+
     //converting a string to a integer
     if( sscanf( argv[8], "%d", &Nparticles ) == EOF ) {
        printf("ERROR: Number of particles input is incorrect");
        return 0;
     }
-    
+
     if( Nparticles <= 0 ) {
         printf("Number of particles must be > 0\n");
         return 0;

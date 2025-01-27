@@ -16,7 +16,7 @@
 
 #include "timer.h"
 
-#include "../common/riscv_util.h"
+#include "common/riscv_util.h"
 
 double Xcenter[3];
 
@@ -75,7 +75,7 @@ START_TIME();
 //unsigned long cycles1, cycles2, instr2, instr1;
 //instr1 = get_inst_count();
 //cycles1 = get_cycles_count();
-    
+
    for (nt=0; nt <ntsteps-1; nt++) {
 
       //if(nt%10 == 0) {
@@ -88,7 +88,7 @@ START_TIME();
       Xcenter[0]=0, Xcenter[1]=0; Xcenter[2]=0;   //reset aggregate stats
       clear_4D(N, F);
 
-#ifdef SEQ
+#ifndef USE_RISCV_VECTOR
       compute_forces(N, X, F);
       acceleration(N, A, F, M);
       velocities(N, V, A, dt);
@@ -103,7 +103,7 @@ START_TIME();
 
       compute_stats(N, X, Xcenter);
 //      print_prv_record();
-      
+
    }
 
 // End instruction and cycles count of the region of interest
@@ -114,7 +114,7 @@ START_TIME();
 //printf("-CSR   NUMBER OF INSTRUCTIONS EXECUTED :%lu\n", instr2 - instr1);
 
 STOP_TIME();
-#ifdef SEQ
+#ifndef USE_RISCV_VECTOR
 printf("somier seq time   %f us \n\n", GET_TIME());
 #else
 printf("somier vec time   %f us \n\n", GET_TIME());

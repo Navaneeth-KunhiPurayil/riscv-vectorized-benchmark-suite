@@ -17,11 +17,11 @@ using namespace std;
 * Barcelona Supercomputing Center (2020)
 *************************************************************************/
 
-#include "../../common/riscv_util.h"
+#include "common/riscv_util.h"
 
 #ifdef USE_RISCV_VECTOR
 #include <riscv_vector.h>
-#include "vector_defines.h"
+#include "common/vector_defines.h"
 #endif
 
 /************************************************************************/
@@ -71,7 +71,7 @@ void init(int argc, char** argv)
         printf("Error reading the matrix dimensions.\n");
     } else{
         printf("Matrix Dimensions: M %zu, N %zu \n", rows, cols);
-    } 
+    }
 
     char line[16];
     wall = new int[rows * cols];
@@ -128,7 +128,7 @@ void run()
 {
     int min;
     int *src,*dst, *temp;
-    
+
     printf("NUMBER OF RUNS: %d\n",NUM_RUNS);
     long long start = get_time();
 
@@ -151,7 +151,7 @@ void run()
                 min = MIN(min, src[n+1]);
               dst[n] = wall[(t+1)*cols + n]+min;
             }
-        }   
+        }
     }
 
     long long end = get_time();
@@ -167,7 +167,7 @@ void run()
 #ifdef RESULT_PRINT
     output_print(dst, cols);
 #endif  // RESULT_PRINT
-    
+
     free(dst);
     free(wall);
     free(src);
@@ -193,11 +193,11 @@ void run_vector()
         _MMR_i32    xSrc_slideup;
         _MMR_i32    xSrc_slidedown;
         _MMR_i32    xSrc;
-        _MMR_i32    xNextrow; 
+        _MMR_i32    xNextrow;
 
         int aux,aux2;
 
-        for (size_t t = 0; t < rows-1; t++) 
+        for (size_t t = 0; t < rows-1; t++)
         {
             aux = dst[0] ;
             for(size_t n = 0; n < cols; n = n + gvl)

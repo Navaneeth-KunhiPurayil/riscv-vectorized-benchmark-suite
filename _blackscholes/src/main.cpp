@@ -3,8 +3,8 @@
 // Black-Scholes
 // Analytical method for calculating European Options
 //
-// 
-// Reference Source: Options, Futures, and Other Derivatives, 3rd Edition, Prentice 
+//
+// Reference Source: Options, Futures, and Other Derivatives, 3rd Edition, Prentice
 // Hall, John C. Hull,
 
 /*************************************************************************
@@ -19,14 +19,14 @@
 #include <math.h>
 #include <string.h>
 
-#include "../../common/riscv_util.h"
+#include "common/riscv_util.h"
 
 #include <time.h>
 #include <sys/time.h>
 
 #ifdef USE_RISCV_VECTOR
 #include <riscv_vector.h>
-#include "../../common/vector_defines.h"
+#include "common/vector_defines.h"
 #endif
 
 #ifdef ENABLE_PARSEC_HOOKS
@@ -105,7 +105,7 @@ int nThreads;
 
 #ifdef USE_RISCV_VECTOR
 
-_MMR_f32 CNDF_SIMD  (_MMR_f32 xInput ,unsigned long int gvl) 
+_MMR_f32 CNDF_SIMD  (_MMR_f32 xInput ,unsigned long int gvl)
 {
 
   _MMR_f32 xNPrimeofX;
@@ -204,7 +204,7 @@ void BlkSchlsEqEuroNoDiv_vector (fptype * OptionPrice, int numOptions, fptype * 
     xPowerTerm = _MM_MUL_f32(xVolatility, xVolatility,gvl);
     xPowerTerm = _MM_MUL_f32(xPowerTerm, _MM_SET_f32(0.5,gvl),gvl);
     xD1 = _MM_ADD_f32( xRiskFreeRate , xPowerTerm,gvl);
-    
+
     xD1   = _MM_MADD_f32(xD1,xTime,xLogTerm,gvl);
 
     xDen = _MM_MUL_f32(xVolatility, xSqrtTime,gvl);
@@ -697,7 +697,7 @@ int main (int argc, char **argv)
     end = get_time();
     printf("\n\nBlackScholes Kernel took %8.8lf secs   \n", elapsed_time(start, end));
 
-    
+
     //Write prices to output file
     file = fopen(outputFile, "w");
     if(file == NULL) {
@@ -736,4 +736,3 @@ int main (int argc, char **argv)
 
     return 0;
 }
-

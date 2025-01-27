@@ -11,7 +11,7 @@
 
 #ifdef USE_RISCV_VECTOR
 #include <riscv_vector.h>
-#include "../../common/vector_defines.h"
+#include "common/vector_defines.h"
 #endif
 
 #ifndef USE_RISCV_VECTOR
@@ -29,7 +29,7 @@ void axpy_vector(double a, double *dx, double *dy, int n) {
   int i;
 
   long gvl = _MMR_VSETVL_E64M1(n);
-  
+
   for (i = 0; i < n;) {
     gvl = _MMR_VSETVL_E64M1(n - i);
     vfloat64m1_t v_dx = _MM_LOAD_f64(&dx[i], gvl);

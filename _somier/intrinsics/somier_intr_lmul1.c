@@ -12,14 +12,15 @@
 #include <inttypes.h>
 #include <errno.h>
 #include <assert.h>
-#include "../somier.h"
+#include "somier.h"
 
 #ifdef USE_RISCV_VECTOR
-#include "../common/vector_defines.h"
+#include "common/vector_defines.h"
 #endif
 
 static int count2=0;
 
+#ifdef USE_RISCV_VECTOR
 void accel_intr(int n, double (*A)[n][n][n], double (*F)[n][n][n], double M)
 {
    int i, j, k;
@@ -50,10 +51,12 @@ void accel_intr(int n, double (*A)[n][n][n], double (*F)[n][n][n], double M)
 	 }
 
 }
+#endif
 
 #undef COLAPSED
 #define COLAPSED
 
+#ifdef USE_RISCV_VECTOR
 void vel_intr(int n, double (*V)[n][n][n], double (*A)[n][n][n], double dt)
 {
    int i, j, k;
@@ -102,7 +105,9 @@ void vel_intr(int n, double (*V)[n][n][n], double (*A)[n][n][n], double dt)
 #endif
 
 }
+#endif
 
+#ifdef USE_RISCV_VECTOR
 void pos_intr(int n, double (*X)[n][n][n], double (*V)[n][n][n], double dt)
 {
    int i, j, k;
@@ -137,6 +142,7 @@ void pos_intr(int n, double (*X)[n][n][n], double (*V)[n][n][n], double dt)
    }
    // would need to check that possition des not go beyond the box walls
 }
+#endif
 //      for (i = 0; i<N; i++)
 //         for (j = 0; j<N; j++)
 //            for (kk = 0; kk<N; kk+=vl) {
@@ -148,4 +154,3 @@ void pos_intr(int n, double (*X)[n][n][n], double (*V)[n][n][n], double dt)
 //               X[2][i][j][k] += V[2][i][j][k]*dt;
 //             }
 //            }
-

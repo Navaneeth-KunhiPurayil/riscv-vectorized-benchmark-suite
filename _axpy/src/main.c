@@ -8,16 +8,16 @@
 #include <stdio.h>
 #include <math.h>
 #include <assert.h>
-#include "utils.h" 
+#include "utils.h"
 
-#include "../../common/riscv_util.h"
+#include "common/riscv_util.h"
 
 /*************************************************************************/
 
 #ifndef USE_RISCV_VECTOR
-    void axpy_serial(double a, double *dx, double *dy, int n); 
+    void axpy_serial(double a, double *dx, double *dy, int n);
 #else
-    void axpy_vector(double a, double *dx, double *dy, int n); 
+    void axpy_vector(double a, double *dx, double *dy, int n);
 #endif
 
 int main(int argc, char *argv[])
@@ -38,7 +38,7 @@ int main(int argc, char *argv[])
     double a=1.53;
     init_vector(dx, n, 1.83);
     init_vector(dy, n, 2.22);
-    
+
     double reference = capture_ref_result(a, dx, dy, n);
 
     end = get_time();
@@ -46,7 +46,7 @@ int main(int argc, char *argv[])
 
     start = get_time();
 #ifndef USE_RISCV_VECTOR
-    axpy_serial(a, dx, dy, n); 
+    axpy_serial(a, dx, dy, n);
 #else
     axpy_vector(a, dx, dy, n);
 #endif

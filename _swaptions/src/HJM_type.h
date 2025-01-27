@@ -4,7 +4,7 @@
 
 // RISC-V VECTOR Version by Cristóbal Ramírez Lazo, "Barcelona 2019"
 #ifdef USE_RISCV_VECTOR
-#include "../../common/vector_defines.h"
+#include "common/vector_defines.h"
 #endif /* USE_RISCV_VECTOR */
 
 #if defined(BASELINE) && defined(ENABLE_SSE4)
