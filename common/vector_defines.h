@@ -68,6 +68,7 @@
 #define _MM_LOAD_u64    	 __riscv_vle64_v_u64m1
 #define _MM_LOAD_u32    	 __riscv_vle32_v_u32m1
 
+#define _MM_LOAD_MASK_u32  	 __riscv_vlm_v_b32
 
 #define _MM_LOAD_i32mf2    	 __riscv_vle32_v_i32mf2
 
