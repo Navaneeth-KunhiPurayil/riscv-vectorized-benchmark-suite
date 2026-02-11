@@ -38,3 +38,30 @@ static unsigned long get_cycles_count()
 }
 
 /*************************************************************************/
+
+#define ALIGNMENT (NR_LANES * NR_CLUSTERS * 4)
+
+#define ALIGN_UP(x, a)  (((x) + (a) - 1) & ~((a) - 1))
+
+void * baremetal_malloc(int incr)
+{
+    extern char l2_alloc_base;   /* Set by linker */
+    static char *heap_end = 0;
+
+    uintptr_t aligned;
+    char *result;
+
+    /* First call: initialize heap */
+    if (!heap_end)
+        heap_end = &l2_alloc_base;
+
+    /* Align current heap pointer */
+    aligned = ALIGN_UP((uintptr_t)heap_end, ALIGNMENT);
+
+    result = (char *)aligned;
+
+    /* Move heap past allocated block */
+    heap_end = result + incr;
+
+    return (void *)result;
+}

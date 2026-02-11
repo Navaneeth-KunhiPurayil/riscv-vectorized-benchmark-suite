@@ -7,7 +7,7 @@
 #include <errno.h>
 #include <assert.h>
 #include "utils.h"
-
+#include "printf.h"
 
 double capture_ref_result(double a, double* dx, double* dy, int n)
 {
