@@ -20,6 +20,7 @@
 #include <string.h>
 
 #include "common/riscv_util.h"
+#include "printf.h"
 
 #include <time.h>
 #include <sys/time.h>
@@ -66,7 +67,7 @@ using namespace tbb;
 //Precision to use for calculations
 #define fptype float
 
-#define NUM_RUNS  100
+#define NUM_RUNS  1
 
 typedef struct OptionData_ {
         fptype s;          // spot price
@@ -76,23 +77,24 @@ typedef struct OptionData_ {
         fptype v;          // volatility
         fptype t;          // time to maturity or option expiration in years
                            //     (1yr = 1.0, 6mos = 0.5, 3mos = 0.25, ..., etc)
-        char OptionType;   // Option type.  "P"=PUT, "C"=CALL
+        int OptionType;   // Option type.  "P"=PUT, "C"=CALL
         fptype divs;       // dividend vals (not used in this test)
         fptype DGrefval;   // DerivaGem Reference Value
 } OptionData;
 
-OptionData* data;
-fptype* prices;
-int numOptions;
+extern fptype prices[] __attribute__((aligned(4 * NR_LANES), section(".l2")));
+extern uint32_t numOptions;
+extern int otype[] __attribute__((aligned(4 * NR_LANES), section(".l2")));
+extern fptype sptprice[] __attribute__((aligned(4 * NR_LANES), section(".l2")));
+extern fptype strike[] __attribute__((aligned(4 * NR_LANES), section(".l2")));
+extern fptype rate[] __attribute__((aligned(4 * NR_LANES), section(".l2")));
+extern fptype volatility[] __attribute__((aligned(4 * NR_LANES), section(".l2")));
+extern fptype otime[] __attribute__((aligned(4 * NR_LANES), section(".l2")));
 
-int    * otype;
-fptype * sptprice;
-fptype * strike;
-fptype * rate;
-fptype * volatility;
-fptype * otime;
+extern fptype DGrefval[] __attribute__((aligned(4 * NR_LANES), section(".l2")));    
+
 int numError = 0;
-int nThreads;
+int nThreads = 1;
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -118,6 +120,7 @@ _MMR_f32 CNDF_SIMD  (_MMR_f32 xInput ,unsigned long int gvl)
   _MMR_f32 xLocal_1;
   _MMR_f32 xLocal_2;
   _MMR_f32 xLocal_3;
+  _MMR_f32 xFinal;
 
   _MMR_f32 xVLocal_2;
   _MMR_MASK_i32 xMask;
@@ -153,10 +156,12 @@ _MMR_f32 CNDF_SIMD  (_MMR_f32 xInput ,unsigned long int gvl)
   xLocal_1 = _MM_ADD_f32(xLocal_2, xLocal_1,gvl);
 
   xLocal   = _MM_MUL_f32(xLocal_1, xNPrimeofX,gvl);
-  xLocal   = _MM_SUB_f32(xOne,xLocal,gvl);
-
-  xLocal   = _MM_SUB_f32_MASK(xMask, xOne, xLocal, gvl);
-  return xLocal;
+  
+  /* Fix the masking w.r.t original RiVEC suite*/
+  xFinal   = _MM_SUB_f32(_MM_SET_f32(1.0,gvl),xLocal,gvl);
+  xMask       = _MM_VFLT_f32(xInput,_MM_SET_f32(0.0,gvl),gvl);
+  xFinal   = _MM_MERGE_f32(xFinal, xLocal, xMask, gvl);
+  return xFinal;
 }
 
 
@@ -386,10 +391,10 @@ struct mainWork {
       prices[i] = price;
 
 #ifdef ERR_CHK
-      fptype priceDelta = data[i].DGrefval - price;
+      fptype priceDelta = DGrefval[i] - price;
       if( fabs(priceDelta) >= 1e-5 ){
         fprintf(stderr,"Error on %d. Computed=%.5f, Ref=%.5f, Delta=%.5f\n",
-    i, price, data[i].DGrefval, priceDelta);
+    i, price, DGrefval[i], priceDelta);
         numError ++;
       }
 #endif
@@ -431,9 +436,6 @@ int bs_thread(void *tid_ptr) {
     int end = start + (numOptions / nThreads);
 
     unsigned long int gvl = __riscv_vsetvl_e32m1(end);
-    //fptype* price;
-    //price = (fptype*)malloc(gvl*sizeof(fptype));
-    //price = aligned_alloc(64, gvl*sizeof(fptype));
 
 #ifdef ENABLE_PARSEC_HOOKS
     __parsec_thread_begin();
@@ -456,10 +458,10 @@ int bs_thread(void *tid_ptr) {
             //}
 #ifdef ERR_CHK
             for (k=0; k<gvl; k++) {
-                priceDelta = data[i+k].DGrefval - prices[k];
+                priceDelta = DGrefval[i+k] - prices[k];
                 if (fabs(priceDelta) >= 1e-4) {
                     printf("Error on %d. Computed=%.5f, Ref=%.5f, Delta=%.5f\n",
-                           i + k, prices[k], data[i+k].DGrefval, priceDelta);
+                           i + k, prices[k], DGrefval[i+k], priceDelta);
                     numError ++;
                 }
             }
@@ -497,10 +499,10 @@ for (j=0; j<NUM_RUNS; j++) {
             prices[i] = price;
 
 #ifdef ERR_CHK
-            priceDelta = data[i].DGrefval - price;
+            priceDelta = DGrefval[i] - price;
             if( fabs(priceDelta) >= 1e-4 ){
         printf("Error on %d. Computed=%.5f, Ref=%.5f, Delta=%.5f\n",
-         i, price, data[i].DGrefval, priceDelta);
+         i, price, DGrefval[i], priceDelta);
         numError ++;
             }
 #endif
@@ -513,21 +515,11 @@ for (j=0; j<NUM_RUNS; j++) {
 #endif // USE_RISCV_VECTOR
 #endif //ENABLE_TBB
 
-
-
-
 int main (int argc, char **argv)
 {
-    FILE *file;
+    printf("RISC-V Vectorized Black-Scholes\n");
+
     int i;
-    int loopnum;
-    fptype * buffer;
-    int * buffer2;
-    int rv;
-
-    long long start,end;
-    start = get_time();
-
 
 #ifdef PARSEC_VERSION
 #define __PARSEC_STRING(x) #x
@@ -543,52 +535,12 @@ int main (int argc, char **argv)
 #endif
 
 
-   if (argc != 4)
-        {
-                printf("Usage:\n\t%s <nthreads> <inputFile> <outputFile>\n", argv[0]);
-                exit(1);
-        }
-    nThreads = atoi(argv[1]);
-    char *inputFile = argv[2];
-    char *outputFile = argv[3];
-
-    //Read input data from file
-    file = fopen(inputFile, "r");
-    if(file == NULL) {
-      printf("ERROR: Unable to open file `%s'.\n", inputFile);
-      exit(1);
-    }
-    rv = fscanf(file, "%i", &numOptions);
-    if(rv != 1) {
-      printf("ERROR: Unable to read from file `%s'.\n", inputFile);
-      fclose(file);
-      exit(1);
-    }
-
 #if !defined(ENABLE_THREADS) && !defined(ENABLE_OPENMP) && !defined(ENABLE_TBB)
     if(nThreads != 1) {
         printf("Error: <nthreads> must be 1 (serial version)\n");
         exit(1);
     }
 #endif
-
-    data = (OptionData*)malloc(numOptions*sizeof(OptionData));
-    prices = (fptype*)malloc(numOptions*sizeof(fptype));
-    for ( loopnum = 0; loopnum < numOptions; ++ loopnum )
-    {
-        rv = fscanf(file, "%f %f %f %f %f %f %c %f %f", &data[loopnum].s, &data[loopnum].strike, &data[loopnum].r, &data[loopnum].divq, &data[loopnum].v, &data[loopnum].t, &data[loopnum].OptionType, &data[loopnum].divs, &data[loopnum].DGrefval);
-        if(rv != 9) {
-          printf("ERROR: Unable to read from file `%s'.\n", inputFile);
-          fclose(file);
-          exit(1);
-        }
-    }
-
-    rv = fclose(file);
-    if(rv != 0) {
-      printf("ERROR: Unable to close file `%s'.\n", inputFile);
-      exit(1);
-    }
 
 #ifdef ENABLE_THREADS
     MAIN_INITENV(,8000000,nThreads);
@@ -599,38 +551,7 @@ int main (int argc, char **argv)
 #define PAD 256
 #define LINESIZE 64
 
-    buffer = (fptype *) malloc(5 * numOptions * sizeof(fptype) + PAD);
-    sptprice = (fptype *) (((unsigned long long)buffer + PAD) & ~(LINESIZE - 1));
-    strike = sptprice + numOptions;
-    rate = strike + numOptions;
-    volatility = rate + numOptions;
-    otime = volatility + numOptions;
-
-    buffer2 = (int *) malloc(numOptions * sizeof(fptype) + PAD);
-    otype = (int *) (((unsigned long long)buffer2 + PAD) & ~(LINESIZE - 1));
-
-    for (i=0; i<numOptions; i++) {
-        otype[i]      = (data[i].OptionType == 'P') ? 1 : 0;
-        sptprice[i]   = data[i].s;
-        strike[i]     = data[i].strike;
-        rate[i]       = data[i].r;
-        volatility[i] = data[i].v;
-        otime[i]      = data[i].t;
-    }
-
     printf("Size of data: %lu\n", numOptions * (sizeof(OptionData) + sizeof(int)));
-
-    end = get_time();
-    printf("\n\nBlackScholes Initialization took %8.8lf secs   \n", elapsed_time(start, end));
-
-    // ROI
-    start = get_time();
-
-    // Start instruction and cycles count of the region of interest
-    //unsigned long cycles1, cycles2, instr2, instr1;
-    // instr1 = get_inst_count();
-    // cycles1 = get_cycles_count();
-//#endif
 
 #ifdef ENABLE_PARSEC_HOOKS
     __parsec_roi_begin();
@@ -651,15 +572,13 @@ int main (int argc, char **argv)
     free(threads);
     free(nums);
 #else
-    int *tids;
-    tids = (int *) malloc (nThreads * sizeof(int));
+    int tids[nThreads] = {0};
 
     for(i=0; i<nThreads; i++) {
         tids[i]=i;
         CREATE_WITH_ARG(bs_thread, &tids[i]);
     }
     WAIT_FOR_END(nThreads);
-    free(tids);
 #endif //WIN32
 #else //ENABLE_THREADS
 #ifdef ENABLE_OPENMP
@@ -686,49 +605,14 @@ int main (int argc, char **argv)
     __parsec_roi_end();
 #endif
 
-//#ifdef USE_RISCV_VECTOR
-    // End instruction and cycles count of the region of interest
-    // instr2 = get_inst_count();
-    // cycles2 = get_cycles_count();
-    // Instruction and cycles count of the region of interest
-    // printf("-CSR   NUMBER OF EXEC CYCLES :%lu\n", cycles2 - cycles1);
-    // printf("-CSR   NUMBER OF INSTRUCTIONS EXECUTED :%lu\n", instr2 - instr1);
-//#endif
-    end = get_time();
-    printf("\n\nBlackScholes Kernel took %8.8lf secs   \n", elapsed_time(start, end));
-
-
-    //Write prices to output file
-    file = fopen(outputFile, "w");
-    if(file == NULL) {
-      printf("ERROR: Unable to open file `%s'.\n", outputFile);
-      exit(1);
-    }
-    rv = fprintf(file, "%i\n", numOptions);
-    if(rv < 0) {
-      printf("ERROR: Unable to write to file `%s'.\n", outputFile);
-      fclose(file);
-      exit(1);
-    }
+    // Print results
     for(i=0; i<numOptions; i++) {
-      rv = fprintf(file, "%.18f\n", prices[i]);
-      if(rv < 0) {
-        printf("ERROR: Unable to write to file `%s'.\n", outputFile);
-        fclose(file);
-        exit(1);
-      }
-    }
-    rv = fclose(file);
-    if(rv != 0) {
-      printf("ERROR: Unable to close file `%s'.\n", outputFile);
-      exit(1);
+        printf("Option:%d Price:%f\n", i, prices[i]);
     }
 
 #ifdef ERR_CHK
     printf("Num Errors: %d\n", numError);
 #endif
-    free(data);
-    free(prices);
 
 #ifdef ENABLE_PARSEC_HOOKS
     __parsec_bench_end();
