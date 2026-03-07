@@ -93,14 +93,12 @@
 
 //uncomment to compile with additional error checks
 #define NDEBUG
-
-#include <cassert>
-
 #ifdef ENABLE_THREADS
 #include "atomic/atomic.h"
 #endif
 
-
+#include <stddef.h>
+#include <assert.h>
 
 namespace threads {
 

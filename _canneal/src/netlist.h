@@ -30,11 +30,23 @@
 #ifndef NETLIST_H
 #define NETLIST_H
 
-#include <vector>
-#include <map>
-#include <string>
-
 #include "annealer_types.h"
+#include "netlist_elem.h"
+#include "location_t.h"
+#include "rng.h"
+
+#include "printf.h"
+
+// For compiled netlist data, include the generated sizes
+#ifdef USE_COMPILED_NETLIST
+#include "netlist_sizes.h"
+#else
+// Fallback for file-based loading (use reasonable defaults)
+#define NETLIST_MAX_ELEMENTS 2500000
+#define NETLIST_MAX_X 5000
+#define NETLIST_MAX_Y 5000
+#define NETLIST_MAX_CHIP_SIZE (NETLIST_MAX_X * NETLIST_MAX_Y)
+#endif
 
 const long NO_MATCHING_ELEMENT = -1;
 
@@ -45,14 +57,14 @@ class Rng;
 class netlist
 {
 public:
-	netlist(const std::string& filename); //ctor
+	netlist(bool use_compiled_data); //ctor with compiled static data
 	void get_random_pair(netlist_elem** a, netlist_elem** b, Rng* rng); // will return an element that we have a valid mutex on
 	void swap_locations(netlist_elem* elem_a, netlist_elem* elem_b);
 	void shuffle(Rng* rng);
 	netlist_elem* netlist_elem_from_loc(location_t& loc);
-	netlist_elem* netlist_elem_from_name(std::string& name);
+	netlist_elem* netlist_elem_from_name(const char* name);
 	routing_cost_t total_routing_cost();
-	void print_locations(const std::string& filename);
+	void print_locations(const char* filename);
 	void release(netlist_elem* elem);
 	netlist_elem* get_random_element(long* elem_id, long different_from, Rng* rng);
 	
@@ -61,10 +73,12 @@ protected:
 	unsigned _max_x;
 	unsigned _max_y;
 	unsigned _chip_size;
-	std::vector<netlist_elem> _elements;//store the actual elements here
-	std::vector< std::vector<location_t> > _locations;//store the actual locations here
-	std::map<std::string, netlist_elem*> _elem_names;
-	netlist_elem* create_elem_if_necessary(std::string& name);
+	netlist_elem _elements[NETLIST_MAX_CHIP_SIZE]; // C-style fixed-size array
+	location_t _locations[NETLIST_MAX_X][NETLIST_MAX_Y]; // C-style 2D fixed-size array
+	netlist_elem* find_elem_by_name(const char* name); // Linear search for element by name
+	netlist_elem* create_elem_if_necessary(const char* name);
+	void initialize_locations(); // Common location initialization code
+	void initialize_from_compiled_data(); // Initialize from compiled static arrays
 	//due to the pointers, perhaps I should make the copy operator protected to prevent copying
 };
 

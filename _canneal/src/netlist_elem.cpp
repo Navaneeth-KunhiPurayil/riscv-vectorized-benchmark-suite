@@ -27,17 +27,11 @@
 // SUCH DAMAGE.
 
 
-#include <stdlib.h>
-
-#include <iostream>
-#include <assert.h>
-#include <math.h>
 
 #include "annealer_types.h"
 #include "location_t.h"
 #include "netlist_elem.h"
-
-using namespace std;
+#include "math.h"
 
 /*************************************************************************
 * RISC-V Vectorized Version
@@ -53,6 +47,9 @@ using namespace std;
 netlist_elem::netlist_elem()
 :present_loc(NULL)//start with the present_loc as nothing at all.  Filled in later by the netlist
 {
+	fanin_count = 0; // Initialize C-style fanin array counter
+	fanout_count = 0; // Initialize C-style fanout array counter
+	fan_locs_count = 0; // Initialize C-style fanlocs array counter
 }
 
 //*****************************************************************************************
@@ -66,13 +63,13 @@ routing_cost_t netlist_elem::routing_cost_given_loc(location_t loc)
 	routing_cost_t fanin_cost = 0;
 	routing_cost_t fanout_cost = 0;
 
-	for (int i = 0; i< fanin.size(); ++i){
+	for (int i = 0; i< fanin_count; ++i){
 		location_t* fanin_loc = fanin[i]->present_loc.Get();
 		fanin_cost += fabs(loc.x - fanin_loc->x);
 		fanin_cost += fabs(loc.y - fanin_loc->y);
 	}
 
-	for (int i = 0; i< fanout.size(); ++i){
+	for (int i = 0; i< fanout_count; ++i){
 		location_t* fanout_loc = fanout[i]->present_loc.Get();
 		fanout_cost += fabs(loc.x - fanout_loc->x);
 		fanout_cost += fabs(loc.y - fanout_loc->y);
@@ -152,8 +149,8 @@ routing_cost_t netlist_elem::swap_cost_vector(_MMR_i32 xOld_loc ,_MMR_i32 xNew_l
 
 routing_cost_t netlist_elem::swap_cost(location_t* old_loc, location_t* new_loc)
 {
-	int fanin_size = fanin.size();
-	int fanout_size = fanout.size();
+	int fanin_size = fanin_count;
+	int fanout_size = fanout_count;
 
 	routing_cost_t no_swap = 0;
 	routing_cost_t yes_swap = 0;

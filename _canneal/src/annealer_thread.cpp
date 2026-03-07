@@ -29,21 +29,15 @@
 #ifdef ENABLE_THREADS
 #include <pthread.h>
 #endif
-
-#include <cassert>
+ 
+#include "assert.h"
 #include "annealer_thread.h"
 #include "location_t.h"
 #include "annealer_types.h"
 #include "netlist_elem.h"
-#include <math.h>
-#include <iostream>
-#include <fstream>
 #include "rng.h"
-#include <stdio.h>
-using std::cout;
-using std::endl;
 
-#include <stdlib.h>
+#include "printf.h"
 
 // RISC-V VECTOR Version by Cristóbal Ramírez Lazo, "Barcelona 2019"
 #ifdef USE_RISCV_VECTOR
@@ -63,31 +57,32 @@ void annealer_thread::Run()
 
     long a_id;
     long b_id;
+    
     netlist_elem* a = _netlist->get_random_element(&a_id, NO_MATCHING_ELEMENT, &rng);
+    printf("Initial element name: %s (ID: %ld)\n", a->item_name, a_id);
     netlist_elem* b = _netlist->get_random_element(&b_id, NO_MATCHING_ELEMENT, &rng);
+    printf("Initial element name: %s (ID: %ld)\n", b->item_name, b_id);
 
     int temp_steps_completed=0;
 
-    #ifdef USE_RISCV_VECTOR
-    unsigned long int gvl   = __riscv_vsetvlmax_e32m1();
-    mask = (int*)malloc(gvl*sizeof(int));
-    for(int i=0 ; i<=gvl ; i=i+1) { mask[i]=0x55555555; }
-    #endif // !USE_RISCV_VECTOR
-
     while(keep_going(temp_steps_completed, accepted_good_moves, accepted_bad_moves)){
+        printf("Temperature: %f\n", T);
         T = T / 1.5;
         accepted_good_moves = 0;
         accepted_bad_moves = 0;
 
         for (int i = 0; i < _moves_per_thread_temp; i++){
+            printf("Swap iter:%d\n", i+1);
             a = b;
             a_id = b_id;
             b = _netlist->get_random_element(&b_id, a_id, &rng);
     #ifdef USE_RISCV_VECTOR
-            routing_cost_t delta_cost = calculate_delta_routing_cost_vector(a,b/*,xMask*/);
+            routing_cost_t delta_cost = calculate_delta_routing_cost_vector(a,b);
     #else // !USE_RISCV_VECTOR
             routing_cost_t delta_cost = calculate_delta_routing_cost(a,b);
     #endif // !USE_RISCV_VECTOR
+
+            printf("Delta cost: %f\n", delta_cost);
 
             move_decision_t is_good_move = accept_move(delta_cost, T, &rng);
 
@@ -108,9 +103,6 @@ void annealer_thread::Run()
         pthread_barrier_wait(&_barrier);
 #endif
     }
-#ifdef USE_RISCV_VECTOR
-    free(mask);
-#endif // !USE_RISCV_VECTOR
 }
 
 //*****************************************************************************************
@@ -140,8 +132,8 @@ routing_cost_t annealer_thread::calculate_delta_routing_cost_vector(netlist_elem
 {
     routing_cost_t delta_cost=0.0;
 
-    int a_fan_size = a->fanin.size() + a->fanout.size();
-    int b_fan_size = b->fanin.size() + b->fanout.size();
+    int a_fan_size = a->fanin_count + a->fanout_count;
+    int b_fan_size = b->fanin_count + b->fanout_count;
     location_t* a_loc = a->present_loc.Get();
     location_t* b_loc = b->present_loc.Get();
 

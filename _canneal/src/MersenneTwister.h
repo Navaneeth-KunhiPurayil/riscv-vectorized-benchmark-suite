@@ -60,7 +60,6 @@
 // Not thread safe (unless auto-initialization is avoided and each thread has
 // its own MTRand object)
 
-#include <iostream>
 #include <limits.h>
 #include <stdio.h>
 #include <time.h>
@@ -122,8 +121,6 @@ public:
 	// Saving and loading generator state
 	void save( uint32* saveArray ) const;  // to array of size SAVE
 	void load( uint32 *const loadArray );  // from such array
-	friend std::ostream& operator<<( std::ostream& os, const MTRand& mtrand );
-	friend std::istream& operator>>( std::istream& is, MTRand& mtrand );
 
 protected:
 	void initialize( const uint32 oneSeed );
@@ -135,7 +132,7 @@ protected:
 		{ return hiBit(u) | loBits(v); }
 	uint32 twist( const uint32& m, const uint32& s0, const uint32& s1 ) const
 		{ return m ^ (mixBits(s0,s1)>>1) ^ (-loBit(s1) & 0x9908b0dfUL); }
-	static uint32 hash( time_t t, clock_t c );
+	// static uint32 hash( time_t t, clock_t c );
 };
 
 
@@ -263,25 +260,9 @@ inline void MTRand::seed( uint32 *const bigSeed, const uint32 seedLength )
 
 inline void MTRand::seed()
 {
-	// Seed the generator with an array from /dev/urandom if available
-	// Otherwise use a hash of time() and clock() values
-	
-	// First try getting an array from /dev/urandom
-	FILE* urandom = fopen( "/dev/urandom", "rb" );
-	if( urandom )
-	{
-		uint32 bigSeed[N];
-		register uint32 *s = bigSeed;
-		register int i = N;
-		register bool success = true;
-		while( success && i-- )
-			success = fread( s++, sizeof(uint32), 1, urandom );
-		fclose(urandom);
-		if( success ) { seed( bigSeed, N );  return; }
-	}
-	
-	// Was not successful, so use time() and clock() instead
-	seed( hash( time(NULL), clock() ) );
+	// Baremetal version: use static seed value
+	// No access to /dev/urandom or system time
+	seed( 0x123456789UL );
 }
 
 
@@ -319,30 +300,30 @@ inline void MTRand::reload()
 }
 
 
-inline MTRand::uint32 MTRand::hash( time_t t, clock_t c )
-{
-	// Get a uint32 from t and c
-	// Better than uint32(x) in case x is floating point in [0,1]
-	// Based on code by Lawrence Kirby (fred@genesis.demon.co.uk)
+// inline MTRand::uint32 MTRand::hash( time_t t, clock_t c )
+// {
+// 	// Get a uint32 from t and c
+// 	// Better than uint32(x) in case x is floating point in [0,1]
+// 	// Based on code by Lawrence Kirby (fred@genesis.demon.co.uk)
 
-	static uint32 differ = 0;  // guarantee time-based seeds will change
+// 	static uint32 differ = 0;  // guarantee time-based seeds will change
 
-	uint32 h1 = 0;
-	unsigned char *p = (unsigned char *) &t;
-	for( size_t i = 0; i < sizeof(t); ++i )
-	{
-		h1 *= UCHAR_MAX + 2U;
-		h1 += p[i];
-	}
-	uint32 h2 = 0;
-	p = (unsigned char *) &c;
-	for( size_t j = 0; j < sizeof(c); ++j )
-	{
-		h2 *= UCHAR_MAX + 2U;
-		h2 += p[j];
-	}
-	return ( h1 + differ++ ) ^ h2;
-}
+// 	uint32 h1 = 0;
+// 	unsigned char *p = (unsigned char *) &t;
+// 	for( size_t i = 0; i < sizeof(t); ++i )
+// 	{
+// 		h1 *= UCHAR_MAX + 2U;
+// 		h1 += p[i];
+// 	}
+// 	uint32 h2 = 0;
+// 	p = (unsigned char *) &c;
+// 	for( size_t j = 0; j < sizeof(c); ++j )
+// 	{
+// 		h2 *= UCHAR_MAX + 2U;
+// 		h2 += p[j];
+// 	}
+// 	return ( h1 + differ++ ) ^ h2;
+// }
 
 
 inline void MTRand::save( uint32* saveArray ) const
@@ -363,26 +344,6 @@ inline void MTRand::load( uint32 *const loadArray )
 	for( ; i--; *s++ = *la++ ) {}
 	left = *la;
 	pNext = &state[N-left];
-}
-
-
-inline std::ostream& operator<<( std::ostream& os, const MTRand& mtrand )
-{
-	register const MTRand::uint32 *s = mtrand.state;
-	register int i = mtrand.N;
-	for( ; i--; os << *s++ << "\t" ) {}
-	return os << mtrand.left;
-}
-
-
-inline std::istream& operator>>( std::istream& is, MTRand& mtrand )
-{
-	register MTRand::uint32 *s = mtrand.state;
-	register int i = mtrand.N;
-	for( ; i--; is >> *s++ ) {}
-	is >> mtrand.left;
-	mtrand.pNext = &mtrand.state[mtrand.N-mtrand.left];
-	return is;
 }
 
 #endif  // MERSENNETWISTER_H

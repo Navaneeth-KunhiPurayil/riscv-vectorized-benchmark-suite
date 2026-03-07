@@ -27,16 +27,6 @@
 // OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 // SUCH DAMAGE.
 
-
-#include <iostream>
-#include <math.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <vector>
-
-#include <time.h>
-#include <sys/time.h>
-
 /*************************************************************************
 * RISC-V Vectorized Version
 * Author: Cristóbal Ramírez Lazo
@@ -62,93 +52,55 @@
 #include "netlist.h"
 #include "rng.h"
 
-using namespace std;
+#include <stdlib.h>
+#include <printf.h>
+
+// Static compile-time configuration for CANNEAL
+#define CANNEAL_NUM_THREADS 1
+#define CANNEAL_SWAPS_PER_TEMP 10
+#define CANNEAL_START_TEMP 20000
+#define CANNEAL_NUM_TEMP_STEPS 10  // -1 means run until convergence
 
 void* entry_pt(void*);
 
+int main (void) {
 
-
-int main (int argc, char * const argv[]) {
-
-//#ifdef USE_RISCV_VECTOR
-    struct timeval tv1, tv2;
-    struct timezone tz;
-    double elapsed1=0.0;
-    gettimeofday(&tv1, &tz);
-//#endif
-
-#ifdef PARSEC_VERSION
-#define __PARSEC_STRING(x) #x
-#define __PARSEC_XSTRING(x) __PARSEC_STRING(x)
-        cout << "PARSEC Benchmark Suite Version "__PARSEC_XSTRING(PARSEC_VERSION) << endl << flush;
-#else
-        cout << "PARSEC Benchmark Suite" << endl << flush;
-#endif //PARSEC_VERSION
+	// Baremetal execution - no stdout or system time available
+	
 #ifdef ENABLE_PARSEC_HOOKS
 	__parsec_bench_begin(__parsec_canneal);
 #endif
 
-	srandom(3);
+	// srandom(3);
 
-	if(argc != 5 && argc != 6) {
-		cout << "Usage: " << argv[0] << " NTHREADS NSWAPS TEMP NETLIST [NSTEPS]" << endl;
-		exit(1);
-	}
-
-	//argument 1 is numthreads
-	int num_threads = atoi(argv[1]);
-	cout << "Threadcount: " << num_threads << endl;
+	// Use statically defined configuration values (no command-line parsing)
+	int num_threads = CANNEAL_NUM_THREADS;
 #ifndef ENABLE_THREADS
 	if (num_threads != 1){
-		cout << "NTHREADS must be 1 (serial version)" <<endl;
 		exit(1);
 	}
 #endif
 
-	//argument 2 is the num moves / temp
-	int swaps_per_temp = atoi(argv[2]);
-	cout << swaps_per_temp << " swaps per temperature step" << endl;
+	// Use static configuration values
+	int swaps_per_temp = CANNEAL_SWAPS_PER_TEMP;
+	int start_temp = CANNEAL_START_TEMP;
+	int number_temp_steps = CANNEAL_NUM_TEMP_STEPS;
 
-	//argument 3 is the start temp
-	int start_temp =  atoi(argv[3]);
-	cout << "start temperature: " << start_temp << endl;
-
-	//argument 4 is the netlist filename
-	string filename(argv[4]);
-	cout << "netlist filename: " << filename << endl;
-
-	//argument 5 (optional) is the number of temperature steps before termination
-	int number_temp_steps = -1;
-        if(argc == 6) {
-		number_temp_steps = atoi(argv[5]);
-		cout << "number of temperature steps: " << number_temp_steps << endl;
-        }
+	printf(" CANNEAL Configuration:\n");
+	printf("  num_threads: %d\n", num_threads);
+	printf("  swaps_per_temp: %d\n", swaps_per_temp);
+	printf("  start_temp: %d\n", start_temp);
+	printf("  number_temp_steps: %d\n", number_temp_steps);
 
 
 	//now that we've read in the commandline, run the program
-	netlist my_netlist(filename);
-
+	netlist my_netlist(true); // Use compiled static netlist data
 
 	annealer_thread a_thread(&my_netlist,num_threads,swaps_per_temp,start_temp,number_temp_steps);
-
-	//#ifdef USE_RISCV_VECTOR
-    gettimeofday(&tv2, &tz);
-    elapsed1 = (double) (tv2.tv_sec-tv1.tv_sec) + (double) (tv2.tv_usec-tv1.tv_usec) * 1.e-6;
-    printf("\n\nInitialization took %8.8lf secs   \n", elapsed1 );
-//#endif
-
-
+	
 #ifdef ENABLE_PARSEC_HOOKS
 	__parsec_roi_begin();
 #endif
-
-
-//#ifdef USE_RISCV_VECTOR
-    struct timeval tv3, tv4;
-    double elapsed2=0.0;
-    gettimeofday(&tv3, &tz);
-//#endif
-
 
 #ifdef ENABLE_THREADS
 	std::vector<pthread_t> threads(num_threads);
@@ -163,22 +115,8 @@ int main (int argc, char * const argv[]) {
 	a_thread.Run();
 #endif
 
-
-//#ifdef USE_RISCV_VECTOR
-    gettimeofday(&tv4, &tz);
-    elapsed2 = (double) (tv4.tv_sec-tv3.tv_sec) + (double) (tv4.tv_usec-tv3.tv_usec) * 1.e-6;
-    printf("\n\nthread.Run() %8.8lf secs   \n", elapsed2 );
-//#endif
-
-
 #ifdef ENABLE_PARSEC_HOOKS
 	__parsec_roi_end();
-#endif
-
-	cout << "Final routing is: " << my_netlist.total_routing_cost() << endl;
-
-#ifdef ENABLE_PARSEC_HOOKS
-	__parsec_bench_end();
 #endif
 
 	return 0;

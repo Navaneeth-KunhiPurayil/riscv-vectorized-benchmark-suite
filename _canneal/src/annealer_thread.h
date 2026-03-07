@@ -35,12 +35,13 @@
 #include <pthread.h>
 #endif
 
-#include <assert.h>
-
 #include "annealer_types.h"
 #include "netlist.h"
 #include "netlist_elem.h"
 #include "rng.h"
+
+// Maximum vector mask size for RISC-V operations (compile-time constant)
+#define MAX_MASK_SIZE 1024
 
 class annealer_thread 
 {
@@ -67,6 +68,12 @@ public:
 		assert(_netlist != NULL);
 #ifdef ENABLE_THREADS
 		pthread_barrier_init(&_barrier, NULL, nthreads);
+#endif
+#ifdef USE_RISCV_VECTOR
+		// Initialize mask array with pattern 0x55555555
+		for(int i = 0; i < MAX_MASK_SIZE; i++) {
+			mask[i] = 0x55555555;
+		}
 #endif
 	};
 	
@@ -95,7 +102,7 @@ protected:
 	int _start_temp;
 	int _number_temp_steps;
 #ifdef USE_RISCV_VECTOR
-	int* mask;
+	int mask[MAX_MASK_SIZE]; // C-style fixed-size array, initialized in constructor
 #endif // !USE_RISCV_VECTOR
 
 #ifdef ENABLE_THREADS

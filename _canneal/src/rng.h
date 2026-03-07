@@ -30,8 +30,6 @@
 #ifndef RNG_H
 #define RNG_H
 
-#include <vector>
-
 #ifdef ENABLE_THREADS
 #include <pthread.h>
 #endif
@@ -44,14 +42,13 @@ public:
 	Rng() {
 #ifdef ENABLE_THREADS
 		pthread_mutex_lock(&seed_lock);
-		_rng = new MTRand(seed++);
+		_rng = MTRand(seed++);
 		pthread_mutex_unlock(&seed_lock);
 #else
-		_rng = new MTRand(seed++);
+		_rng = MTRand(seed++);
 #endif //ENABLE_THREADS
 	}
 	~Rng() {
-		delete _rng;
 	}
 	long rand();
 	long rand(int max);
@@ -60,7 +57,7 @@ protected:
 	//use same random seed for each run
 	static unsigned int seed;
 	static pthread_mutex_t seed_lock;
-	MTRand *_rng;
+	MTRand _rng;
 };
 
 #endif

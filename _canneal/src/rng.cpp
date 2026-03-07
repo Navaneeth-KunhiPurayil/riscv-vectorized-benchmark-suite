@@ -29,7 +29,6 @@
 
 #include "rng.h"
 #include <stdlib.h>
-#include <time.h>
 
 //global seed used for rng initialization
 unsigned int Rng::seed = 0;
@@ -41,17 +40,17 @@ pthread_mutex_t Rng::seed_lock = PTHREAD_MUTEX_INITIALIZER;
 
 long Rng::rand(int max)
 {
-	return _rng->randInt(max-1);//need to round off to keep BELOW max!
+	return _rng.randInt(max-1);//need to round off to keep BELOW max!
 }
 
 
 long Rng::rand()
 {
-	return _rng->randInt();
+	return _rng.randInt();
 }
 
 double Rng::drand()
 {
-	return _rng->rand();
+	return _rng.rand();
 }
 

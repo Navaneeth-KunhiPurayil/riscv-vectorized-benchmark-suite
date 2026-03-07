@@ -30,10 +30,6 @@
 #ifndef NETLIST_ELEM_H
 #define NETLIST_ELEM_H
 
-#include <string>
-#include <vector>
-#include <deque>
-
 #include "AtomicPtr.h"
 #include "location_t.h"
 #include "annealer_types.h"
@@ -41,6 +37,12 @@
 #ifdef USE_RISCV_VECTOR
 #include "common/vector_defines.h"
 #endif
+
+// Maximum fanin/fanout connections per element (C-style array size)
+#define MAX_FAN_LOCS_PER_ELEM 512
+#define MAX_FANIN_PER_ELEM 2048
+#define MAX_FANOUT_PER_ELEM 2048
+#define MAX_ELEMENT_NAME_LENGTH 256
 
 using threads::AtomicPtr;
 
@@ -55,12 +57,16 @@ public:
 #endif //USE_RISCV_VECTOR
 
 public:
-	std::string item_name;
-	std::vector<netlist_elem*> fanin;
-	std::vector<netlist_elem*> fanout;
+	char item_name[MAX_ELEMENT_NAME_LENGTH]; // C-style fixed-size char array for element name
+	// C-style fixed-size arrays for fanin/fanout connections
+	netlist_elem* fanin[MAX_FANIN_PER_ELEM];
+	unsigned int fanin_count; // Number of entries in fanin array
+	netlist_elem* fanout[MAX_FANOUT_PER_ELEM];
+	unsigned int fanout_count; // Number of entries in fanout array
 	AtomicPtr<location_t> present_loc;
-	//std::deque<location_t *> fan_locs;
-	std::vector<unsigned long *> fan_locs;
+	//C-style fixed-size array for fanin/fanout locations (RISCV vector operations)
+	unsigned long * fan_locs[MAX_FAN_LOCS_PER_ELEM];
+	unsigned int fan_locs_count; // Number of entries in fan_locs array
 protected:
 };
 

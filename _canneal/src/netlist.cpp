@@ -32,12 +32,32 @@
 #include "netlist_elem.h"
 #include "rng.h"
 
-#include <fstream>
-#include <iostream>
+# include <string.h>
 #include <assert.h>
-#include <deque>
+
+#include "printf.h"
+
+// External symbols from compiled assembly netlist data
+#ifdef USE_COMPILED_NETLIST
+extern const unsigned long compiled_num_elements_data[];
+extern const unsigned long compiled_max_x_data[];
+extern const unsigned long compiled_max_y_data[];
+extern const char* compiled_element_names[];
+extern const unsigned long compiled_element_types[];
+extern const char* compiled_connections[];
+extern const unsigned long compiled_connection_offsets[];
+extern const unsigned long compiled_connection_counts[];
+
+// Convenience macros to access metadata from arrays
+#define compiled_num_elements (compiled_num_elements_data[0])
+#define compiled_max_x (compiled_max_x_data[0])
+#define compiled_max_y (compiled_max_y_data[0])
+#endif
 
 using namespace std;
+
+// Global variable to track element allocation across different netlist instances
+static unsigned g_unused_elem = 0;
 
 void netlist::release(netlist_elem* elem)
 {
@@ -52,11 +72,11 @@ void netlist::release(netlist_elem* elem)
 routing_cost_t netlist::total_routing_cost()
 {
 	routing_cost_t rval = 0;
-	for (std::map<std::string, netlist_elem*>::iterator iter = _elem_names.begin();
-		 iter != _elem_names.end();
-		 ++iter){
-		netlist_elem* elem = iter->second;
-		rval += elem->routing_cost_given_loc(*(elem->present_loc.Get()));
+	for (unsigned i = 0; i < _num_elements; i++) {
+		netlist_elem* elem = &_elements[i];
+		if (elem->present_loc.Get() != NULL) {
+			rval += elem->routing_cost_given_loc(*(elem->present_loc.Get()));
+		}
 	}
 	return rval / 2; //since routing_cost calculates both input and output routing, we have double counted
 }
@@ -92,7 +112,9 @@ void netlist::swap_locations(netlist_elem* elem_a, netlist_elem* elem_b)
 //*****************************************************************************************
 netlist_elem* netlist::get_random_element(long* elem_id, long different_from, Rng* rng)
 {
+	printf("Getting random element different from ID: %ld\n", different_from);
 	long id = rng->rand(_chip_size);
+	printf("Random element ID: %ld\n", id);
 	netlist_elem* elem = &(_elements[id]);
 	
 	//loop until we get a non duplicate element
@@ -100,6 +122,7 @@ netlist_elem* netlist::get_random_element(long* elem_id, long different_from, Rn
 	//if it doesn't work, try a new one
 	while (id == different_from){ 
 		id = rng->rand(_chip_size);
+		printf("Random element ID: %ld\n", id);
 		elem = &(_elements[id]);
 	}
 	*elem_id=id;
@@ -146,120 +169,151 @@ netlist_elem* netlist::netlist_elem_from_loc(location_t& loc)
 //*****************************************************************************************
 //
 //*****************************************************************************************
-netlist_elem* netlist::netlist_elem_from_name(std::string& name)
+netlist_elem* netlist::netlist_elem_from_name(const char* name)
 {
-	return (_elem_names[name]);
+	return find_elem_by_name(name);
 }
 
 //*****************************************************************************************
-//  TODO add errorchecking
-// ctor.  Takes a properly formatted input file, and converts it into a 
+// Linear search for element by name (replaces std::map functionality)
 //*****************************************************************************************
-netlist::netlist(const std::string& filename)
+netlist_elem* netlist::find_elem_by_name(const char* name)
 {
-	ifstream fin (filename.c_str());
-	assert(fin.is_open()); // were there any errors on opening?
-
-	//read the chip_array paramaters
-	fin >> _num_elements >> _max_x >> _max_y;
-	_chip_size = _max_x * _max_y;
-	assert(_num_elements < _chip_size);
-	
-	//create a chip of the right size
-	_elements.resize(_chip_size);
-	
-	cout << "locs created" << endl;
-	//create the location elements
-	vector<location_t> y_vec(_max_y); 
-	_locations.resize(_max_x, y_vec);
-	
-	//and set each one to its correct value
-	unsigned i_elem = 0;
-	for (int x = 0; x < _max_x; x++){
-		for (int y = 0; y < _max_y; y++){
-			location_t* loc = &_locations.at(x).at(y);
-			loc->x = x;
-			loc->y = y;
-			_elements.at(i_elem).present_loc.Set(loc);
-			i_elem++;
-		}//for (int y = 0; y < _max_y; y++)
-	}//for (int x = 0; x < _max_x; x++)
-	cout << "locs assigned" << endl;
-
-	int i=0;
-	while (!fin.eof()){
-		i++;
-		//if ((i % 100000) == 0){
-		//	cout << "Just saw element: " << i << endl;
-		//}
-		std::string name;
-		fin >> name;
-		netlist_elem* present_elem = create_elem_if_necessary(name); // the element that we are presently working on
-		//use create if necessary because it might have been created as a previous elements fanin
-
-		//set the basic info for the element
-		present_elem->item_name = name; //its name
-
-		int type; //its type TODO errorcheck here
-		fin >> type; // presently, don't actually use this 
-
-		std::string fanin_name;
-		while (fin >> fanin_name){
-			if (fanin_name == "END"){
-				break; //last element in fanin
-			} //otherwise, make present elem the fanout of fanin_elem, and vice versa
-			netlist_elem* fanin_elem = create_elem_if_necessary(fanin_name);
-			present_elem->fanin.push_back(fanin_elem);
-			fanin_elem->fanout.push_back(present_elem);
-#ifdef USE_RISCV_VECTOR
-			unsigned long * fanin_location = (unsigned long *)&fanin_elem->present_loc;
-			present_elem->fan_locs.push_back(fanin_location);
-			unsigned long * fanout_location = (unsigned long *)&present_elem->present_loc;
-			fanin_elem->fan_locs.push_back(fanout_location);
-			//printf("fanin_elem->present_loc a 0x%x \n", fanin_location );
-			//printf("fanin_elem->present_loc a 0x%x \n", fanout_location );
-#endif
-
-		}//while (fin >> fanin_name)
-
-	}//while (!fin.eof())
-		cout << "netlist created. " << i-1 << " elements." << endl;		
+	for (unsigned i = 0; i < g_unused_elem; i++) {
+		if (strcmp(_elements[i].item_name, name) == 0) {
+			return &_elements[i];
+		}
+	}
+	return NULL;
 }
 
 //*****************************************************************************************
 // Used in the ctor.  Since an element have fanin from an element that can occur both
 // earlier and later in the input file, we must handle both cases
 //*****************************************************************************************
-netlist_elem* netlist::create_elem_if_necessary(std::string& name)
+netlist_elem* netlist::create_elem_if_necessary(const char* name)
 {
-	static unsigned unused_elem = 0;//the first unused element
 	netlist_elem* rval;
 	//check whether we already have a netlist element with that name
-	std::map<std::string, netlist_elem*>::iterator iter = _elem_names.find(name);
-	if (iter == _elem_names.end()){
-		rval = &_elements.at(unused_elem);//if not, get one from the _elements pool
-		_elem_names[name] = rval;//put it in the map
-		unused_elem++;
-	} else {
-		//if it is in the map, just get a pointer to it
-		rval = iter->second;
+	rval = find_elem_by_name(name);
+	if (rval == NULL) {
+		//if not found, get one from the _elements pool
+		rval = &_elements[g_unused_elem];
+		strncpy(rval->item_name, name, MAX_ELEMENT_NAME_LENGTH - 1);
+		rval->item_name[MAX_ELEMENT_NAME_LENGTH - 1] = '\0';
+		g_unused_elem++;
 	}
 	return rval;
 }
 
 //*****************************************************************************************
-// simple dump file
-// not threadsafe
+// Initialize location grid - common code used by both constructors
 //*****************************************************************************************
-void netlist::print_locations(const std::string& filename)
+void netlist::initialize_locations()
 {
-	ofstream fout(filename.c_str());
-	assert(fout.is_open());
+	printf("Initializing locations...\n");
+	unsigned i_elem = 0;
+	for (int x = 0; x < _max_x; x++){
+		for (int y = 0; y < _max_y; y++){
+			location_t* loc = &_locations[x][y];
+			loc->x = x;
+			loc->y = y;
 
-	for (std::map<std::string, netlist_elem*>::iterator iter = _elem_names.begin();
-		 iter != _elem_names.end();
-		 ++iter){
-		netlist_elem* elem = iter->second;
-		fout << elem->item_name << "\t" << elem->present_loc.Get()->x << "\t" << elem->present_loc.Get()->y << std::endl;
+			// Initialize default values in all locations
+			_elements[i_elem].present_loc.Set(loc);
+			_elements[i_elem].fanin_count = 0;
+			_elements[i_elem].fanout_count = 0;
+			_elements[i_elem].fan_locs_count = 0;
+			strncpy(_elements[i_elem].item_name, "empty", MAX_ELEMENT_NAME_LENGTH - 1);
+			_elements[i_elem].item_name[MAX_ELEMENT_NAME_LENGTH - 1] = '\0';
+			i_elem++;
+		}//for (int y = 0; y < _max_y; y++)
+	}//for (int x = 0; x < _max_x; x++)
+}
+
+//*****************************************************************************************
+// Constructor using compiled static netlist data
+// pass true to use compiled data (requires netlist_data.h to be included with USE_COMPILED_NETLIST)
+//*****************************************************************************************
+netlist::netlist(bool use_compiled_data)
+{
+	if (!use_compiled_data) {
+		assert(false); // This constructor requires use_compiled_data=true
 	}
+	
+#ifdef USE_COMPILED_NETLIST
+	g_unused_elem = 0; // Reset global counter for compiled data loading
+	
+	// Set metadata from compiled data
+	_num_elements = compiled_num_elements;
+	_max_x = compiled_max_x;
+	_max_y = compiled_max_y;
+	_chip_size = _max_x * _max_y;
+	assert(_num_elements < _chip_size);
+	
+	initialize_locations();
+	
+	// Initialize from compiled data
+	initialize_from_compiled_data();
+	
+#else
+	assert(false); // USE_COMPILED_NETLIST must be defined
+#endif
+}
+
+//*****************************************************************************************
+// Initialize netlist from compiled static arrays (stored in assembly)
+// Accesses external symbols: compiled_element_names[], compiled_connections[], etc.
+//*****************************************************************************************
+void netlist::initialize_from_compiled_data()
+{
+	printf("Initializing compiled data...\n");
+#ifdef USE_COMPILED_NETLIST
+	// Create all elements with their names
+	for (unsigned i = 0; i < _num_elements; i++) {
+		// Element names are stored as pointers, dereference to get the actual string
+		const char* name_ptr = compiled_element_names[i];
+		netlist_elem* elem = create_elem_if_necessary(name_ptr);
+		printf("Element %u: %s\n", i, elem->item_name);
+	}
+	
+	// Add fanin/fanout connections
+	for (unsigned i = 0; i < _num_elements; i++) {
+		// Get element name
+		const char* name_ptr = compiled_element_names[i];
+		netlist_elem* present_elem = find_elem_by_name(name_ptr);
+		
+		// Get connections for this element
+		unsigned conn_offset = compiled_connection_offsets[i];
+		unsigned conn_count = compiled_connection_counts[i];
+		
+		// Process each fanin connection
+		for (unsigned j = 0; j < conn_count; j++) {
+			// Connections are stored as pointers to strings
+			const char* fanin_ptr = compiled_connections[conn_offset + j];
+			netlist_elem* fanin_elem = create_elem_if_necessary(fanin_ptr);
+			
+			// Add to fanin/fanout relationships (C-style array with bounds checking)
+			if (present_elem->fanin_count < MAX_FANIN_PER_ELEM) {
+				present_elem->fanin[present_elem->fanin_count++] = fanin_elem;
+			}
+			if (fanin_elem->fanout_count < MAX_FANOUT_PER_ELEM) {
+				fanin_elem->fanout[fanin_elem->fanout_count++] = present_elem;
+			}
+			
+#ifdef USE_RISCV_VECTOR
+			unsigned long * fanin_location = (unsigned long *)&fanin_elem->present_loc;
+			if (present_elem->fan_locs_count < MAX_FAN_LOCS_PER_ELEM) {
+				present_elem->fan_locs[present_elem->fan_locs_count++] = fanin_location;
+			}
+			unsigned long * fanout_location = (unsigned long *)&present_elem->present_loc;
+			if (fanin_elem->fan_locs_count < MAX_FAN_LOCS_PER_ELEM) {
+				fanin_elem->fan_locs[fanin_elem->fan_locs_count++] = fanout_location;
+			}
+#endif
+		}
+	}
+#else
+	assert(false); // USE_COMPILED_NETLIST must be defined
+#endif
 }

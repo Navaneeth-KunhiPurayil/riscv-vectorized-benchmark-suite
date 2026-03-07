@@ -263,11 +263,11 @@
 #define _MM_MERGE_VF_f64  	__riscv_vfmerge_vfm_f64m1
 #define _MM_MERGE_VF_f32 	__riscv_vfmerge_vfm_f32m1
 
-#define _MM_REDSUM_f64  	 __riscv_vfredosum_vs_f64m1_f64m1
-#define _MM_REDSUM_f32  	 __riscv_vfredosum_vs_f32m1_f32m1
+#define _MM_REDSUM_f64  	 __riscv_vfredusum_vs_f64m1_f64m1
+#define _MM_REDSUM_f32  	 __riscv_vfredusum_vs_f32m1_f32m1
 
-#define _MM_REDSUM_f64_MASK  __riscv_vfredosum_vs_f64m1_f64m1_m
-#define _MM_REDSUM_f32_MASK  __riscv_vfredosum_vs_f32m1_f32m1_m
+#define _MM_REDSUM_f64_MASK  __riscv_vfredusum_vs_f64m1_f64m1_m
+#define _MM_REDSUM_f32_MASK  __riscv_vfredusum_vs_f32m1_f32m1_m
 
 #define _MM_REDMIN_f64       __riscv_vfredmin_vs_f64m1_f64m1
 #define _MM_REDMIN_f32       __riscv_vfredmin_vs_f32m1_f32m1
