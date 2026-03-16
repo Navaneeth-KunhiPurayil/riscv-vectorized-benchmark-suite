@@ -11,7 +11,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
-#include "common/riscv_util.h"
 #ifdef USE_RISCV_VECTOR
 #include <riscv_vector.h>
 #include "common/vector_defines.h"
