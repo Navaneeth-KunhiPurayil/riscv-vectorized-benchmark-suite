@@ -12,6 +12,7 @@
 
 #include "printf.h"
 #include "common/riscv_util.h"
+#include "runtime.h"
 
 /*************************************************************************/
 
@@ -23,14 +24,11 @@
 
 extern char end;
 
-int main(int argc, char *argv[])
+int main()
 {
-    long n;
+    long n = 8192;
 
-    if (argc == 2)
-    n = 1024*atol(argv[1]); // input argument: vector size in Ks
-    else
-        n = 1024;
+    printf("Running AXPY with AraXL config L=%d C=%d\n", NR_LANES, NR_CLUSTERS);
 
     // /* Allocate the source and result vectors */
     double *dx     = (double*)baremetal_malloc(n*sizeof(double));
@@ -45,10 +43,14 @@ int main(int argc, char *argv[])
 #ifndef USE_RISCV_VECTOR
     axpy_serial(a, dx, dy, n);
 #else
+    start_timer();
     axpy_vector(a, dx, dy, n);
+    stop_timer();
 #endif
 
-    printf ("done\n");
+    int64_t cycles = get_timer();
+    printf ("[sw-cycles] %ld\n", cycles);
+
     test_result(dy, reference, n);
 
     return 0;

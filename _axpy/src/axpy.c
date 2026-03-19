@@ -28,6 +28,7 @@ void axpy_serial(double a, double *dx, double *dy, int n) {
 void axpy_vector(double a, double *dx, double *dy, int n) {
   int i;
 
+#ifdef INTRINSICS
   long gvl = _MMR_VSETVL_E64M1(n);
 
   for (i = 0; i < n;) {
@@ -39,6 +40,18 @@ void axpy_vector(double a, double *dx, double *dy, int n) {
 
     i += gvl;
   }
+#else
+  long gvl;
+  for (i = 0; i < n;) {
+    asm volatile ("vsetvli %0, %1, e64, m8, ta, ma" : "=r"(gvl) : "r"(n-i));
+    asm volatile ("vle64.v v8, (%0)"::"r"(&dx[i]));
+    asm volatile ("vle64.v v16, (%0)"::"r"(&dy[i]));
+    asm volatile ("vfmacc.vf v16, %0, v8"::"f"(a));
+    asm volatile ("vse64.v v16, (%0)"::"r"(&dy[i]));
+    i += gvl;
+  }
+
+#endif
 }
 
 #endif
