@@ -52,6 +52,7 @@ using namespace tbb;
 #endif
 
 #include "printf.h"
+#include "runtime.h"
 
 using namespace std;
 
@@ -108,7 +109,7 @@ tbb::cache_aligned_allocator<int> memoryInt;
 tbb::cache_aligned_allocator<bool> memoryBool;
 #endif
 
-
+static int cnt_dist=0; // for counting number of distance calculations
 float dist(Point p1, Point p2, int dim);
 
 
@@ -174,9 +175,13 @@ void intshuffle(int *intarray, int length)
 /* compute Euclidean distance squared between two points */
 float dist(Point p1, Point p2, int dim )
 {
+  cnt_dist++;
+  
 #ifdef USE_RISCV_VECTOR
   float result=0.0;
   int i;
+
+#ifdef INTRINSICS
   unsigned long int gvl = _MMR_VSETVL_E32M1(dim);
 
  _MMR_f32 result1,result2, _aux, _diff, _coord1, _coord2;
@@ -195,7 +200,37 @@ float dist(Point p1, Point p2, int dim )
   }
   result2 = _MM_REDSUM_f32(result1,result2,gvl);
   result = _MM_VGETFIRST_f32(result2);
+#else
 
+  unsigned long int gvl;
+
+  asm volatile ("vsetvli %0, %1, e32, m4, ta, ma" : "=r"(gvl) : "r"(dim));
+  asm volatile ("vmv.v.x v4, zero");
+  asm volatile ("vmv.v.x v24, zero");
+  
+  for (i=0;i<dim;i=i+2*gvl) {
+    // First iteration
+    asm volatile ("vsetvli %0, %1, e32, m4, ta, ma" : "=r"(gvl) : "r"(dim-i));
+    asm volatile ("vle32.v v12, (%0)"::"r"(&(p1.coord[i])));
+    asm volatile ("vle32.v v16, (%0)"::"r"(&(p2.coord[i])));
+    asm volatile ("vfsub.vv v20, v12, v16");
+    asm volatile ("vfmacc.vv v24, v20, v20");
+    int j= i + gvl;
+    
+    // Exit check: only do second iteration if there's more data
+    if (j >= dim) break;
+    
+    // Second iteration with v8, v28 for loads
+    asm volatile ("vsetvli %0, %1, e32, m4, ta, ma" : "=r"(gvl) : "r"(dim-j));
+    asm volatile ("vle32.v v8, (%0)"::"r"(&(p1.coord[j])));
+    asm volatile ("vle32.v v28, (%0)"::"r"(&(p2.coord[j])));
+    asm volatile ("vfsub.vv v20, v8, v28");
+    asm volatile ("vfmacc.vv v24, v20, v20");
+  }
+  asm volatile ("vfredusum.vs v4, v24, v4");
+  asm volatile ("vfmv.f.s %0, v4":"=f"(result));
+
+#endif
   return result;
 #else // USE_RISCV_VECTOR
   int i;
@@ -559,7 +594,7 @@ double pgain(long x, Points *points, double z, long int *numcenters, int pid, pt
   // otherwise do nothing
 
   if ( gl_cost_of_opening_x < 0 ) {
-    printf("Opening a new center at %d would save cost %lf by closing %d centers\n", x, gl_cost_of_opening_x, (int)gl_number_of_centers_to_close);
+    // printf("Opening a new center at %d would save cost %lf by closing %d centers\n", x, gl_cost_of_opening_x, (int)gl_number_of_centers_to_close);
     //  we'd save money by opening x; we'll do it
     for ( int i = k1; i < k2; i++ ) {
       bool close_center = gl_lower[center_table[points->p[i].assign]] > 0 ;
@@ -613,7 +648,7 @@ double pgain(long x, Points *points, double z, long int *numcenters, int pid, pt
     float z, long *k, double cost, long iter, float e,
     int pid, pthread_barrier_t* barrier)
 {
-  printf("----------------pFL----------------\n");
+  // printf("----------------pFL----------------\n");
 #ifdef ENABLE_THREADS
   pthread_barrier_wait(barrier);
 #endif
@@ -624,10 +659,10 @@ double pgain(long x, Points *points, double z, long int *numcenters, int pid, pt
   change = cost;
   /* continue until we run iter iterations without improvement */
   /* stop instead if improvement is less than e */
-  printf("z=%f cost=%lf iter=%d\n", z, cost, iter);
+  // printf("z=%f cost=%lf iter=%d\n", z, cost, iter);
   while (change/cost > 1.0*e) {
     
-    printf("metric:%lf ref:%lf\n",change/cost, 1.0*e);
+    // printf("metric:%lf ref:%lf\n",change/cost, 1.0*e);
     change = 0.0;
     /* randomize order in which centers are considered */
 
@@ -658,12 +693,12 @@ int selectfeasible_fast(Points *points, int **feasible, int kmin)
 int selectfeasible_fast(Points *points, int **feasible, int kmin, int pid, pthread_barrier_t* barrier)
 #endif
 {
-  printf("selecting feasible centers...%d\n", points->num);
+  // printf("selecting feasible centers...%d\n", points->num);
   int numfeasible = points->num;
   if (numfeasible > (ITER*kmin*log((double)kmin)))
     numfeasible = (int)(ITER*kmin*log((double)kmin));
   *feasible = (int *)baremetal_malloc(numfeasible*sizeof(int));
-  printf("num feasible centers: %d\n", numfeasible);
+  // printf("num feasible centers: %d\n", numfeasible);
 
   float* accumweight;
   float totalweight;
@@ -723,9 +758,9 @@ int selectfeasible_fast(Points *points, int **feasible, int kmin, int pid, pthre
     (*feasible)[i]=r;
   }
 
-  printf("selecting feasible centers...done\n");
+  // printf("selecting feasible centers...done\n");
   for (int i=k1;i<k2;i++) {
-    printf("feasible[%d]=%d\n",i,(*feasible)[i]);
+    // printf("feasible[%d]=%d\n",i,(*feasible)[i]);
   }
 
 #ifdef TBB_VERSION
@@ -751,6 +786,9 @@ float pkmedian(Points *points, long kmin, long kmax, long* kfinal,
          int pid, pthread_barrier_t* barrier )
 {
   printf("pkmedian pthread %d begin\n",pid);
+  
+  start_timer();
+  
   int i;
   double cost;
   double hiz, loz, z;
@@ -824,7 +862,7 @@ float pkmedian(Points *points, long kmin, long kmax, long* kfinal,
     i++;
   }
 
-  printf("pspeedy...%lf, num open centers=%d\n", cost, k);
+  // printf("pspeedy...%lf, num open centers=%d\n", cost, k);
 
   /* now we begin the binary search for real */
   /* must designate some points as feasible centers */
@@ -842,6 +880,10 @@ float pkmedian(Points *points, long kmin, long kmax, long* kfinal,
   pthread_barrier_wait(barrier);
 #endif
 
+  stop_timer();
+  printf("pspeedy [sw-cycles]: %ld cnt: %d\n", get_timer(), cnt_dist);
+
+  start_timer();
   while(1) {
     /* first get a rough estimate on the FL solution */
     cost = pFL(points, feasible, numfeasible,
@@ -880,6 +922,8 @@ float pkmedian(Points *points, long kmin, long kmax, long* kfinal,
     pthread_barrier_wait(barrier);
 #endif
   }
+  stop_timer();
+  printf("pFL [sw-cycles]: %ld cnt:%d \n", get_timer(), cnt_dist);
 
   //clean up...
   if( pid==0 ) {
@@ -1088,12 +1132,11 @@ void streamCluster(long kmin, long kmax, int dim,
     memset(is_center, 0, points.num*sizeof(bool));
     center_table = (int*)baremetal_malloc(points.num*sizeof(int));
 #endif
-
+    
     localSearch(&points, kmin, kmax, &kfinal); // parallel
-    printf("local search done...\n");
 
+    start_timer();
     contcenters(&points); /* sequential */
-    printf("contcenters done...\n");
 
     if( kfinal + centers.num > centersize ) {
       // here we don't handle the situation where # of centers gets too large.
@@ -1114,6 +1157,10 @@ void streamCluster(long kmin, long kmax, int dim,
     // TODO: add check to exit loop when no more data to read
     // For now just break
     break;
+
+    stop_timer();
+    printf("cont & copy centers [sw-cycles]: %ld cnt:%d\n", get_timer(), cnt_dist);
+
   }
 
   //finally cluster all temp centers
@@ -1129,10 +1176,12 @@ void streamCluster(long kmin, long kmax, int dim,
 #endif
 
   localSearch( &centers, kmin, kmax ,&kfinal ); // parallel
-  printf("cluster search done...\n");
 
+  start_timer();
   contcenters(&centers);
-
+  stop_timer();
+  printf("cont centers [sw-cycles]: %ld cnt:%d\n", get_timer(), cnt_dist);
+  
   outcenterIDs( &centers, centerIDs);
 }
 
@@ -1175,9 +1224,11 @@ int main()
   __parsec_roi_begin();
 #endif
 
-  printf("Running StreamCluster with %d threads\n", nproc);
+  printf("Running StreamCluster with %d threads L=%d C=%d\n", nproc, NR_LANES, NR_CLUSTERS);
 
   streamCluster(kmin, kmax, dim, chunksize, clustersize);
+
+  printf("Number of distance calculations: %d\n", cnt_dist);
 
 #ifdef ENABLE_PARSEC_HOOKS
   __parsec_roi_end();
