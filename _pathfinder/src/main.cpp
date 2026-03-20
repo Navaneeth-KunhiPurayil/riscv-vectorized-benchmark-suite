@@ -14,6 +14,7 @@ using namespace std;
 
 #include "common/riscv_util.h"
 #include "printf.h"
+#include "runtime.h"
 
 #ifdef USE_RISCV_VECTOR
 #include <riscv_vector.h>
@@ -23,7 +24,7 @@ using namespace std;
 /************************************************************************/
 
 //Enable RESULT_PRINT in order to see the result vector, for instruction count it should be disable
-#define RESULT_PRINT
+// #define RESULT_PRINT
 //Enable INPUT_PRINT in order to see the input matrix, for instruction count it should be disable
 //#define INPUT_PRINT
 
@@ -108,8 +109,11 @@ void run_vector()
 {
     int *dst;
 
-    printf("NUMBER OF RUNS: %d\n",NUM_RUNS);
+    printf("NUMBER OF RUNS: %d L=%d C=%d\n",NUM_RUNS, NR_LANES, NR_CLUSTERS);
+    
+    start_timer();
 
+#ifdef INTRINSICS
     for (int j=0; j<NUM_RUNS; j++) {
         for (int x = 0; x < cols; x++){
             result[x] = wall[x];
@@ -145,11 +149,45 @@ void run_vector()
             }
         }
     }
+#else
+    for (int j=0; j<NUM_RUNS; j++) {
+        for (int x = 0; x < cols; x++){
+            result[x] = wall[x];
+        }
+        dst = result;
+
+        size_t gvl;
+
+        int aux, aux2;
+
+        for (size_t t = 0; t < rows-1; t++)
+        {
+            aux = dst[0]; 
+            for(size_t n = 0; n < cols; n = n + gvl)
+            {
+                asm volatile ("vsetvli %0, %1, e32, m8, ta, ma" : "=r"(gvl) : "r"(cols-n));
+                if (!((t>0) && (gvl==cols)))
+                    asm volatile ("vle32.v v0, (%0)"::"r"(&dst[n]));
+                aux2 = (n+gvl >= cols) ?  dst[n+gvl-1] : dst[n+gvl];
+                asm volatile ("vle32.v v24, (%0)"::"r"(&wall[(t+1)*cols + n]));
+                asm volatile ("vslide1up.vx v16, v0, %0"::"r"(aux));
+                asm volatile ("vmin.vv v0, v0, v16");
+                asm volatile ("vslide1down.vx v8, v0, %0"::"r"(aux2));
+                asm volatile ("vmin.vv v0, v0, v8");
+                asm volatile ("vadd.vv v0, v0, v24");
+                aux = dst[n+gvl-1];
+                asm volatile ("vse32.v v0, (%0)"::"r"(&dst[n]));
+            }
+        }
+    }
+#endif // INTRINSICS
+    stop_timer();
 
     if(compare(cols, dst, reference)){
         printf("Verification failed!\n");
     } else {
-        printf("Verification passed!\n");
+        int64_t cycles = get_timer();
+        printf("Verification passed! [sw-cycles]=%ld\n", cycles);
     }
 
 #ifdef RESULT_PRINT

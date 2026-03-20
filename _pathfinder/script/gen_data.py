@@ -60,8 +60,11 @@ def read_pathfinder_input(file_path):
     
     return rows, cols, wall, reference
 
-# Usage
-file_path = 'input/data_tiny.in'
+if len(sys.argv) > 1:
+  file_path = sys.argv[1]
+else:
+  file_path = "input/data_small.in"
+
 rows, cols, wall_data, reference_data = read_pathfinder_input(file_path)
 
 # Create the file
