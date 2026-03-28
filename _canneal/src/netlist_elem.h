@@ -51,7 +51,11 @@ public:
 	netlist_elem();
 	routing_cost_t routing_cost_given_loc(location_t loc);
 #ifdef USE_RISCV_VECTOR
+#ifdef INTRINSICS
 	routing_cost_t swap_cost_vector(_MMR_i32 xAFanin_loc ,_MMR_i32 xBFanin_loc ,int a_fan_size);
+#else
+	routing_cost_t swap_cost_vector(int a_fan_size);
+#endif
 #else // !USE_RISCV_VECTOR
 	routing_cost_t swap_cost(location_t* old_loc, location_t* new_loc);
 #endif //USE_RISCV_VECTOR

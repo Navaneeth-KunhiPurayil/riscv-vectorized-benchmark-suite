@@ -42,9 +42,9 @@
 extern const unsigned long compiled_num_elements_data[];
 extern const unsigned long compiled_max_x_data[];
 extern const unsigned long compiled_max_y_data[];
-extern const char* compiled_element_names[];
+extern const char*         compiled_element_names[];
 extern const unsigned long compiled_element_types[];
-extern const char* compiled_connections[];
+extern const char*         compiled_connections[];
 extern const unsigned long compiled_connection_offsets[];
 extern const unsigned long compiled_connection_counts[];
 
@@ -112,9 +112,9 @@ void netlist::swap_locations(netlist_elem* elem_a, netlist_elem* elem_b)
 //*****************************************************************************************
 netlist_elem* netlist::get_random_element(long* elem_id, long different_from, Rng* rng)
 {
-	printf("Getting random element different from ID: %ld\n", different_from);
+	// printf("Getting random element different from ID: %ld\n", different_from);
 	long id = rng->rand(_chip_size);
-	printf("Random element ID: %ld\n", id);
+	// printf("Random element ID: %ld\n", id);
 	netlist_elem* elem = &(_elements[id]);
 	
 	//loop until we get a non duplicate element
@@ -122,7 +122,7 @@ netlist_elem* netlist::get_random_element(long* elem_id, long different_from, Rn
 	//if it doesn't work, try a new one
 	while (id == different_from){ 
 		id = rng->rand(_chip_size);
-		printf("Random element ID: %ld\n", id);
+		// printf("Random element ID: %ld\n", id);
 		elem = &(_elements[id]);
 	}
 	*elem_id=id;

@@ -83,8 +83,12 @@ routing_cost_t netlist_elem::routing_cost_given_loc(location_t loc)
 //  Get the cost change of swapping from our present location to a new location
 //*****************************************************************************************
 #ifdef USE_RISCV_VECTOR
+int spill_buffer[32 * NR_LANES * NR_CLUSTERS] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS)));
+
+#ifdef INTRINSICS
 routing_cost_t netlist_elem::swap_cost_vector(_MMR_i32 xOld_loc ,_MMR_i32 xNew_loc ,int fan_size)
 {
+
 	routing_cost_t no_swap = 0;
 	routing_cost_t yes_swap = 0;
 
@@ -118,9 +122,13 @@ routing_cost_t netlist_elem::swap_cost_vector(_MMR_i32 xOld_loc ,_MMR_i32 xNew_l
         xLoc = _MM_LOAD_INDEX_i64(0,_MM_CAST_u64_i64(xLoc),gvl);
         xLoc = _MM_LOAD_INDEX_i64(0,_MM_CAST_u64_i64(xLoc),gvl);
 
+        // This is a spill intentionally added to avoid an expensive reshuffling operations in AraXL
+        _MM_STORE_i64((long *)&spill_buffer[0],xLoc,gvl);
+
         gvl     = __riscv_vsetvl_e32m1(a_size-i);
 
-        xLoc2           = _MM_CAST_i32_i64(xLoc);
+        xLoc2   = _MM_LOAD_i32((int *)&spill_buffer[0],gvl);
+        //xLoc2           = _MM_CAST_i32_i64(xLoc);
 
         xNo_Swap_i      = _MM_SUB_i32(xOld_loc,xLoc2,gvl);
         xNo_Swap_aux    = _MM_VFCVT_F_X_f32(xNo_Swap_i,gvl);
@@ -145,6 +153,59 @@ routing_cost_t netlist_elem::swap_cost_vector(_MMR_i32 xOld_loc ,_MMR_i32 xNew_l
 
     return (double)(yes_swap - no_swap);
 }
+#else
+routing_cost_t netlist_elem::swap_cost_vector(int fan_size)
+{
+    float no_swap = 0;
+    float yes_swap = 0;
+
+    int a_size;
+    a_size = fan_size*2;
+
+    unsigned long int gvl;
+    asm volatile ("vsetvli %0, %1, e32, m1, ta, ma" : "=r"(gvl) : "r"(a_size));
+    asm volatile ("vmv.v.i v28, 0"); // xNo_Swap
+    asm volatile ("vmv.v.i v30, 0"); // xYes_Swap
+
+    for(int i=0 ; i<a_size ; i = i + gvl) {
+        asm volatile ("vsetvli %0, %1, e64, m1, ta, ma" : "=r"(gvl) : "r"((a_size-i)/2));
+
+        asm volatile ("vle64.v v20, (%0)"::"r"(&(fan_locs[i/2]))); // Load the base address of fan_locs
+        asm volatile ("vloxei64.v v20, (zero), v20"); // Load the pointer to the current location of each input and output
+        asm volatile ("vloxei64.v v20, (zero), v20"); // Load the current location of each input and output
+
+        // This is a spill intentionally added to avoid an expensive reshuffling operations in AraXL
+        asm volatile ("vse64.v v20, (%0)"::"r"(&spill_buffer[0])); 
+        
+        asm volatile ("vsetvli %0, %1, e32, m1, ta, ma" : "=r"(gvl) : "r"(a_size-i));
+        
+        asm volatile ("vle32.v v8, (%0)"::"r"(&spill_buffer[0])); // Load the current location of each input and output
+        asm volatile ("vsub.vv v16, v8, v4");
+        asm volatile ("vfcvt.f.x.v v16, v16");
+        asm volatile ("vfabs.v v16, v16"); // xNo_Swap_aux
+
+        asm volatile ("vsub.vv v24, v8, v12");
+        asm volatile ("vfcvt.f.x.v v24, v24");
+        asm volatile ("vfabs.v v24, v24"); // xYes_Swap_aux
+
+        asm volatile ("vfadd.vv v28, v16, v28");
+        asm volatile ("vfadd.vv v30, v24, v30");
+    }
+
+    asm volatile ("vsetvli %0, %1, e32, m1, ta, ma" : "=r"(gvl) : "r"(a_size));
+    asm volatile ("vmv.v.i v16, 0"); 
+    asm volatile ("vmv.v.i v24, 0"); 
+
+    asm volatile ("vfredusum.vs	v16, v28, v16"); // xresult_no_swap
+    asm volatile ("vfredusum.vs	v24, v30, v24"); // xresult_yes_swap
+
+    asm volatile ("vfmv.f.s %0, v16":"=f"(no_swap));
+    asm volatile ("vfmv.f.s %0, v24":"=f"(yes_swap));
+    
+    return (double)(yes_swap - no_swap);
+}
+#endif
+
 #else // !USE_RISCV_VECTOR
 
 routing_cost_t netlist_elem::swap_cost(location_t* old_loc, location_t* new_loc)

@@ -53,17 +53,18 @@
 #include "rng.h"
 
 #include <stdlib.h>
-#include <printf.h>
+#include "printf.h"
 
 // Static compile-time configuration for CANNEAL
+#define USE_COMPILED_NETLIST
 #define CANNEAL_NUM_THREADS 1
 #define CANNEAL_SWAPS_PER_TEMP 10
-#define CANNEAL_START_TEMP 20000
+#define CANNEAL_START_TEMP 2000
 #define CANNEAL_NUM_TEMP_STEPS 10  // -1 means run until convergence
 
 void* entry_pt(void*);
 
-int main (void) {
+int main (int argc, char **argv) {
 
 	// Baremetal execution - no stdout or system time available
 	
@@ -75,6 +76,7 @@ int main (void) {
 
 	// Use statically defined configuration values (no command-line parsing)
 	int num_threads = CANNEAL_NUM_THREADS;
+
 #ifndef ENABLE_THREADS
 	if (num_threads != 1){
 		exit(1);
@@ -120,10 +122,12 @@ int main (void) {
 #endif
 
 	return 0;
+	
 }
-
+/*
 void* entry_pt(void* data)
 {
 	annealer_thread* ptr = static_cast<annealer_thread*>(data);
 	ptr->Run();
 }
+*/

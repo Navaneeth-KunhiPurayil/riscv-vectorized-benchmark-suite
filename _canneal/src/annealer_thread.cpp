@@ -59,20 +59,21 @@ void annealer_thread::Run()
     long b_id;
     
     netlist_elem* a = _netlist->get_random_element(&a_id, NO_MATCHING_ELEMENT, &rng);
-    printf("Initial element name: %s (ID: %ld)\n", a->item_name, a_id);
+    // printf("Initial element name: %s (ID: %ld)\n", a->item_name, a_id);
     netlist_elem* b = _netlist->get_random_element(&b_id, NO_MATCHING_ELEMENT, &rng);
-    printf("Initial element name: %s (ID: %ld)\n", b->item_name, b_id);
+    // printf("Initial element name: %s (ID: %ld)\n", b->item_name, b_id);
 
     int temp_steps_completed=0;
 
     while(keep_going(temp_steps_completed, accepted_good_moves, accepted_bad_moves)){
-        printf("Temperature: %f\n", T);
+        printf("Temperature: %f step: %d good moves: %d bad moves: %d\n", T, 
+                         temp_steps_completed, accepted_good_moves, accepted_bad_moves);
         T = T / 1.5;
         accepted_good_moves = 0;
         accepted_bad_moves = 0;
 
-        for (int i = 0; i < _moves_per_thread_temp; i++){
-            printf("Swap iter:%d\n", i+1);
+        for (int i = 0; i < _moves_per_thread_temp; i++) {
+            // printf("Swap iter:%d\n", i+1);
             a = b;
             a_id = b_id;
             b = _netlist->get_random_element(&b_id, a_id, &rng);
@@ -82,7 +83,7 @@ void annealer_thread::Run()
             routing_cost_t delta_cost = calculate_delta_routing_cost(a,b);
     #endif // !USE_RISCV_VECTOR
 
-            printf("Delta cost: %f\n", delta_cost);
+            // printf("Delta cost: %f\n", delta_cost);
 
             move_decision_t is_good_move = accept_move(delta_cost, T, &rng);
 
@@ -141,24 +142,36 @@ routing_cost_t annealer_thread::calculate_delta_routing_cost_vector(netlist_elem
     if((a_fan_size > 0) | (b_fan_size > 0))
     {
         int max_vl = (a_fan_size > b_fan_size) ? a_fan_size*2 : b_fan_size*2;
+#ifdef INTRINSICS
         unsigned long int gvl   = __riscv_vsetvl_e32m1(max_vl);
-        // Get the MVL allowed by the hardware
-        //unsigned long int gvl   = __builtin_epi_vsetvlmax(__epi_e32, __epi_m1);
-        //Create a mask with size of MVL
-        //int* mask;
-        //mask = (int*)malloc(gvl*sizeof(int));
-        //for(int i=0 ; i<=gvl ; i=i+2) { mask[i]=1;  mask[i+1]=0; }
-//        _MMR_MASK_i32  xMask = _MM_CAST_i1_i32(_MM_LOAD_i32((int *)&mask[0],gvl)); // gcc 13 does not support this
         _MMR_MASK_i32  xMask     = _MM_LOAD_MASK_u32((const uint8_t *)&mask[0],gvl);
         _MMR_i32 xAFanin_loc     = _MM_MERGE_i32(_MM_SET_i32(a_loc->y,gvl),_MM_SET_i32(a_loc->x,gvl),xMask,gvl);
         _MMR_i32 xBFanin_loc     = _MM_MERGE_i32(_MM_SET_i32(b_loc->y,gvl),_MM_SET_i32(b_loc->x,gvl),xMask,gvl);
-
         if(a_fan_size > 0) {
             delta_cost = a->swap_cost_vector(xAFanin_loc,xBFanin_loc,a_fan_size);
         }
         if(b_fan_size > 0) {
             delta_cost = delta_cost + b->swap_cost_vector(xBFanin_loc,xAFanin_loc,b_fan_size);
         }
+#else
+        unsigned long int gvl;
+        asm volatile ("vsetvli %0, %1, e32, m1, ta, ma" : "=r"(gvl) : "r"(max_vl));
+        asm volatile ("vlm.v v0, (%0)"::"r"(&mask[0]));
+        asm volatile ("vmv.v.x v4, %0"::"r"(a_loc->x));
+        asm volatile ("vmv.v.x v8, %0"::"r"(a_loc->y));
+        asm volatile ("vmv.v.x v12, %0"::"r"(b_loc->x));
+        asm volatile ("vmv.v.x v16, %0"::"r"(b_loc->y));
+        asm volatile ("vmerge.vvm v4, v8, v4, v0"); // xAFanin_loc
+        asm volatile ("vmerge.vvm v12, v16, v12, v0"); // xBFanin_loc
+        if(a_fan_size > 0) {
+            delta_cost = a->swap_cost_vector(a_fan_size);
+        }
+        if(b_fan_size > 0) {
+            delta_cost = delta_cost - b->swap_cost_vector(b_fan_size); 
+            // (-) here since we don't swap the registers v4 and v12 within the swap_cost_vector function
+        }
+#endif        
+
     }
 
     return delta_cost;
