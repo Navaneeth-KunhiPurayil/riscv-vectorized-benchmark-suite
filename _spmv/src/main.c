@@ -28,6 +28,7 @@
 #include "common/riscv_util.h"
 #define TOLERANCE 1e-6
 #include "printf.h"
+#include "runtime.h"
 
 void spmv_intrinsics(const size_t nrows, double *a, uint64_t *ia, uint64_t *ja, double *x, double *y);
 void spmv_serial(const size_t nrows, double *a, uint64_t *ia, uint64_t *ja, double *x, double *y);
@@ -44,8 +45,12 @@ int main(){
 
     bool verification = true;
 
+    printf("Running SpMV with M=%ld, N=%ld, NNZ=%ld L=%d C=%d\n", M, N, NZ, NR_LANES, NR_CLUSTERS);
+
 #ifdef USE_RISCV_VECTOR
+    start_timer();
     spmv_intrinsics(M, a, ia, ja, x, y);
+    stop_timer();
 #else // !USE_RISCV_VECTOR
     spmv_serial(M, a, ia, ja, x, y);
 #endif
@@ -59,7 +64,7 @@ int main(){
                 return i+1;
             }
         }
-        printf("Verification pass \n");
+        printf("Verification pass [sw-cycles] = %ld\n", get_timer());
     }
 
     printf ("done\n");

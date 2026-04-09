@@ -117,13 +117,23 @@ else:
 
 M, N, NZ, ia, ja, a, x, y = read_mtx(input_file)
 
+# Calculate non-zeros per row and the maximum/minimum
+nnz_per_row = np.zeros(M, dtype=np.uint64)
+for i in range(M):
+  nnz_per_row[i] = ia[i+1] - ia[i]
+max_nnz_per_row = np.max(nnz_per_row)
+min_nnz_per_row = np.min(nnz_per_row[nnz_per_row > 0])
+
 print(".section .data,\"aw\",@progbits")
 emit("M",  np.array(M,  dtype=np.uint64))
 emit("N",  np.array(N,  dtype=np.uint64))
 emit("NZ", np.array(NZ, dtype=np.uint64))
+emit("max_nnz_per_row", np.array(max_nnz_per_row, dtype=np.uint64))
+emit("min_nnz_per_row", np.array(min_nnz_per_row, dtype=np.uint64))
 emit("ia", ia, 'NR_LANES*4*NR_CLUSTERS')
 emit("ja", ja, 'NR_LANES*4*NR_CLUSTERS')
 emit("a",  a,  'NR_LANES*4*NR_CLUSTERS')
+emit("nnz_per_row", nnz_per_row, 'NR_LANES*4*NR_CLUSTERS')
 emit("x",  x,  'NR_LANES*4*NR_CLUSTERS')
 emit("y",  y,  'NR_LANES*4*NR_CLUSTERS')
 
