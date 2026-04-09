@@ -59,7 +59,10 @@ def read_blackscholes_input(file_path):
     return numOptions, data
 
 # Usage
-file_path = 'input/in_8.input'
+if len(sys.argv) > 1:
+  file_path = sys.argv[1]
+else:
+  file_path = "input/in_8.input"
 numOptions, input_data = read_blackscholes_input(file_path)
 
 # Create the file

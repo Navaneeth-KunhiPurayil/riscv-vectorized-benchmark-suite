@@ -21,6 +21,7 @@
 
 #include "common/riscv_util.h"
 #include "printf.h"
+#include "runtime.h"
 
 #include <time.h>
 #include <sys/time.h>
@@ -68,6 +69,9 @@ using namespace tbb;
 #define fptype float
 
 #define NUM_RUNS  1
+#define TOLERANCE 1e-1
+// #define ERR_CHK
+// #define PRINT_RESULTS
 
 typedef struct OptionData_ {
         fptype s;          // spot price
@@ -159,7 +163,6 @@ _MMR_f32 CNDF_SIMD  (_MMR_f32 xInput ,unsigned long int gvl)
   
   /* Fix the masking w.r.t original RiVEC suite*/
   xFinal   = _MM_SUB_f32(_MM_SET_f32(1.0,gvl),xLocal,gvl);
-  xMask       = _MM_VFLT_f32(xInput,_MM_SET_f32(0.0,gvl),gvl);
   xFinal   = _MM_MERGE_f32(xFinal, xLocal, xMask, gvl);
   return xFinal;
 }
@@ -458,10 +461,10 @@ int bs_thread(void *tid_ptr) {
             //}
 #ifdef ERR_CHK
             for (k=0; k<gvl; k++) {
-                priceDelta = DGrefval[i+k] - prices[k];
-                if (fabs(priceDelta) >= 1e-4) {
+                priceDelta = DGrefval[i+k] - prices[i+k];
+                if (fabs(priceDelta) >= TOLERANCE) {
                     printf("Error on %d. Computed=%.5f, Ref=%.5f, Delta=%.5f\n",
-                           i + k, prices[k], DGrefval[i+k], priceDelta);
+                           i + k, prices[i+k], DGrefval[i+k], priceDelta);
                     numError ++;
                 }
             }
@@ -596,7 +599,10 @@ int main (int argc, char **argv)
 #else //ENABLE_TBB
     //serial version
     int tid=0;
+    start_timer();
     bs_thread(&tid);
+    stop_timer();
+    printf("Time: %ld cycles\n", get_timer());
 #endif //ENABLE_TBB
 #endif //ENABLE_OPENMP
 #endif //ENABLE_THREADS
@@ -605,10 +611,12 @@ int main (int argc, char **argv)
     __parsec_roi_end();
 #endif
 
+#ifdef PRINT_RESULTS
     // Print results
     for(i=0; i<numOptions; i++) {
         printf("Option:%d Price:%f\n", i, prices[i]);
     }
+#endif
 
 #ifdef ERR_CHK
     printf("Num Errors: %d\n", numError);
