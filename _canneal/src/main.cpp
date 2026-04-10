@@ -54,6 +54,7 @@
 
 #include <stdlib.h>
 #include "printf.h"
+#include "runtime.h"
 
 // Static compile-time configuration for CANNEAL
 #define USE_COMPILED_NETLIST
@@ -93,6 +94,8 @@ int main (int argc, char **argv) {
 	printf("  swaps_per_temp: %d\n", swaps_per_temp);
 	printf("  start_temp: %d\n", start_temp);
 	printf("  number_temp_steps: %d\n", number_temp_steps);
+	printf("  Lanes=%d\n", NR_LANES);
+	printf("  Clusters=%d\n", NR_CLUSTERS);
 
 
 	//now that we've read in the commandline, run the program
@@ -114,11 +117,19 @@ int main (int argc, char **argv) {
 		pthread_join(threads[i], NULL);
 	}
 #else
+	start_timer();
 	a_thread.Run();
+	stop_timer();
+	printf("Total execution time [sw-cycles]: %ld\n", get_timer());
 #endif
 
 #ifdef ENABLE_PARSEC_HOOKS
 	__parsec_roi_end();
+#endif
+
+#ifdef USE_RISCV_VECTOR
+	extern unsigned long swap_cost_vector_calls;
+	printf("swap_cost_vector calls: %lu\n", swap_cost_vector_calls);
 #endif
 
 	return 0;

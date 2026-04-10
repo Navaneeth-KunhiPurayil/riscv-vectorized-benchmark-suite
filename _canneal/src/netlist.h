@@ -38,15 +38,7 @@
 #include "printf.h"
 
 // For compiled netlist data, include the generated sizes
-#ifdef USE_COMPILED_NETLIST
 #include "netlist_sizes.h"
-#else
-// Fallback for file-based loading (use reasonable defaults)
-#define NETLIST_MAX_ELEMENTS 2500000
-#define NETLIST_MAX_X 5000
-#define NETLIST_MAX_Y 5000
-#define NETLIST_MAX_CHIP_SIZE (NETLIST_MAX_X * NETLIST_MAX_Y)
-#endif
 
 const long NO_MATCHING_ELEMENT = -1;
 
@@ -73,12 +65,10 @@ protected:
 	unsigned _max_x;
 	unsigned _max_y;
 	unsigned _chip_size;
+	unsigned _total_used;
 	netlist_elem _elements[NETLIST_MAX_CHIP_SIZE]; // C-style fixed-size array
 	location_t _locations[NETLIST_MAX_X][NETLIST_MAX_Y]; // C-style 2D fixed-size array
 	netlist_elem* find_elem_by_name(const char* name); // Linear search for element by name
-	netlist_elem* create_elem_if_necessary(const char* name);
-	void initialize_locations(); // Common location initialization code
-	void initialize_from_compiled_data(); // Initialize from compiled static arrays
 	//due to the pointers, perhaps I should make the copy operator protected to prevent copying
 };
 

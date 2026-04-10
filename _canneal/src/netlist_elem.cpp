@@ -42,6 +42,7 @@
 
 #ifdef USE_RISCV_VECTOR
 #include "common/vector_defines.h"
+unsigned long swap_cost_vector_calls = 0;
 #endif
 
 netlist_elem::netlist_elem()
@@ -88,6 +89,7 @@ int spill_buffer[32 * NR_LANES * NR_CLUSTERS] __attribute__((aligned(4 * NR_LANE
 #ifdef INTRINSICS
 routing_cost_t netlist_elem::swap_cost_vector(_MMR_i32 xOld_loc ,_MMR_i32 xNew_loc ,int fan_size)
 {
+	swap_cost_vector_calls++;
 
 	routing_cost_t no_swap = 0;
 	routing_cost_t yes_swap = 0;
@@ -156,6 +158,8 @@ routing_cost_t netlist_elem::swap_cost_vector(_MMR_i32 xOld_loc ,_MMR_i32 xNew_l
 #else
 routing_cost_t netlist_elem::swap_cost_vector(int fan_size)
 {
+    swap_cost_vector_calls++;
+
     float no_swap = 0;
     float yes_swap = 0;
 

@@ -61,13 +61,13 @@ public:
 #endif //USE_RISCV_VECTOR
 
 public:
-	char item_name[MAX_ELEMENT_NAME_LENGTH]; // C-style fixed-size char array for element name
-	// C-style fixed-size arrays for fanin/fanout connections
+	char item_name[MAX_ELEMENT_NAME_LENGTH]; //C-style fixed-size string for the name
+	AtomicPtr<location_t> present_loc;
+	//C-style fixed-size arrays for fanin/fanout (replace std::vector)
 	netlist_elem* fanin[MAX_FANIN_PER_ELEM];
 	unsigned int fanin_count; // Number of entries in fanin array
 	netlist_elem* fanout[MAX_FANOUT_PER_ELEM];
 	unsigned int fanout_count; // Number of entries in fanout array
-	AtomicPtr<location_t> present_loc;
 	//C-style fixed-size array for fanin/fanout locations (RISCV vector operations)
 	unsigned long * fan_locs[MAX_FAN_LOCS_PER_ELEM];
 	unsigned int fan_locs_count; // Number of entries in fan_locs array

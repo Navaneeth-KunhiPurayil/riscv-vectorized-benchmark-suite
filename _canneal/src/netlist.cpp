@@ -37,27 +37,24 @@
 
 #include "printf.h"
 
-// External symbols from compiled assembly netlist data
-#ifdef USE_COMPILED_NETLIST
-extern const unsigned long compiled_num_elements_data[];
-extern const unsigned long compiled_max_x_data[];
-extern const unsigned long compiled_max_y_data[];
+// External symbols from compiled assembly netlist data (index-based)
+extern const unsigned long compiled_num_elements[];
+extern const unsigned long compiled_max_x[];
+extern const unsigned long compiled_max_y[];
+extern const unsigned long compiled_total_used[];
 extern const char*         compiled_element_names[];
-extern const unsigned long compiled_element_types[];
-extern const char*         compiled_connections[];
-extern const unsigned long compiled_connection_offsets[];
-extern const unsigned long compiled_connection_counts[];
-
-// Convenience macros to access metadata from arrays
-#define compiled_num_elements (compiled_num_elements_data[0])
-#define compiled_max_x (compiled_max_x_data[0])
-#define compiled_max_y (compiled_max_y_data[0])
-#endif
+extern const unsigned long compiled_fanin_flat[];
+extern const unsigned long compiled_fanin_offsets[];
+extern const unsigned long compiled_fanin_counts[];
+extern const unsigned long compiled_fanout_flat[];
+extern const unsigned long compiled_fanout_offsets[];
+extern const unsigned long compiled_fanout_counts[];
+extern const unsigned long compiled_fanlocs_flat[];
+extern const unsigned long compiled_fanlocs_offsets[];
+extern const unsigned long compiled_fanlocs_counts[];
 
 using namespace std;
 
-// Global variable to track element allocation across different netlist instances
-static unsigned g_unused_elem = 0;
 
 void netlist::release(netlist_elem* elem)
 {
@@ -175,11 +172,11 @@ netlist_elem* netlist::netlist_elem_from_name(const char* name)
 }
 
 //*****************************************************************************************
-// Linear search for element by name (replaces std::map functionality)
+// Linear search for element by name
 //*****************************************************************************************
 netlist_elem* netlist::find_elem_by_name(const char* name)
 {
-	for (unsigned i = 0; i < g_unused_elem; i++) {
+	for (unsigned i = 0; i < _total_used; i++) {
 		if (strcmp(_elements[i].item_name, name) == 0) {
 			return &_elements[i];
 		}
@@ -188,132 +185,89 @@ netlist_elem* netlist::find_elem_by_name(const char* name)
 }
 
 //*****************************************************************************************
-// Used in the ctor.  Since an element have fanin from an element that can occur both
-// earlier and later in the input file, we must handle both cases
-//*****************************************************************************************
-netlist_elem* netlist::create_elem_if_necessary(const char* name)
-{
-	netlist_elem* rval;
-	//check whether we already have a netlist element with that name
-	rval = find_elem_by_name(name);
-	if (rval == NULL) {
-		//if not found, get one from the _elements pool
-		rval = &_elements[g_unused_elem];
-		strncpy(rval->item_name, name, MAX_ELEMENT_NAME_LENGTH - 1);
-		rval->item_name[MAX_ELEMENT_NAME_LENGTH - 1] = '\0';
-		g_unused_elem++;
-	}
-	return rval;
-}
-
-//*****************************************************************************************
-// Initialize location grid - common code used by both constructors
-//*****************************************************************************************
-void netlist::initialize_locations()
-{
-	printf("Initializing locations...\n");
-	unsigned i_elem = 0;
-	for (int x = 0; x < _max_x; x++){
-		for (int y = 0; y < _max_y; y++){
-			location_t* loc = &_locations[x][y];
-			loc->x = x;
-			loc->y = y;
-
-			// Initialize default values in all locations
-			_elements[i_elem].present_loc.Set(loc);
-			_elements[i_elem].fanin_count = 0;
-			_elements[i_elem].fanout_count = 0;
-			_elements[i_elem].fan_locs_count = 0;
-			strncpy(_elements[i_elem].item_name, "empty", MAX_ELEMENT_NAME_LENGTH - 1);
-			_elements[i_elem].item_name[MAX_ELEMENT_NAME_LENGTH - 1] = '\0';
-			i_elem++;
-		}//for (int y = 0; y < _max_y; y++)
-	}//for (int x = 0; x < _max_x; x++)
-}
-
-//*****************************************************************************************
-// Constructor using compiled static netlist data
-// pass true to use compiled data (requires netlist_data.h to be included with USE_COMPILED_NETLIST)
+// Constructor using pre-computed index-based netlist data from gen_data.py.
+// All name-to-index resolution and fanin/fanout computation was done at generation time.
+// This constructor only sets up the location grid and copies pre-computed index-based
+// connections into pointer arrays — no string lookups needed.
 //*****************************************************************************************
 netlist::netlist(bool use_compiled_data)
 {
 	if (!use_compiled_data) {
-		assert(false); // This constructor requires use_compiled_data=true
+		assert(false);
 	}
-	
-#ifdef USE_COMPILED_NETLIST
-	g_unused_elem = 0; // Reset global counter for compiled data loading
-	
-	// Set metadata from compiled data
-	_num_elements = compiled_num_elements;
-	_max_x = compiled_max_x;
-	_max_y = compiled_max_y;
-	_chip_size = _max_x * _max_y;
-	assert(_num_elements < _chip_size);
-	
-	initialize_locations();
-	
-	// Initialize from compiled data
-	initialize_from_compiled_data();
-	
-#else
-	assert(false); // USE_COMPILED_NETLIST must be defined
-#endif
-}
 
-//*****************************************************************************************
-// Initialize netlist from compiled static arrays (stored in assembly)
-// Accesses external symbols: compiled_element_names[], compiled_connections[], etc.
-//*****************************************************************************************
-void netlist::initialize_from_compiled_data()
-{
-	printf("Initializing compiled data...\n");
-#ifdef USE_COMPILED_NETLIST
-	// Create all elements with their names
-	for (unsigned i = 0; i < _num_elements; i++) {
-		// Element names are stored as pointers, dereference to get the actual string
-		const char* name_ptr = compiled_element_names[i];
-		netlist_elem* elem = create_elem_if_necessary(name_ptr);
-		printf("Element %u: %s\n", i, elem->item_name);
-	}
-	
-	// Add fanin/fanout connections
-	for (unsigned i = 0; i < _num_elements; i++) {
-		// Get element name
-		const char* name_ptr = compiled_element_names[i];
-		netlist_elem* present_elem = find_elem_by_name(name_ptr);
-		
-		// Get connections for this element
-		unsigned conn_offset = compiled_connection_offsets[i];
-		unsigned conn_count = compiled_connection_counts[i];
-		
-		// Process each fanin connection
-		for (unsigned j = 0; j < conn_count; j++) {
-			// Connections are stored as pointers to strings
-			const char* fanin_ptr = compiled_connections[conn_offset + j];
-			netlist_elem* fanin_elem = create_elem_if_necessary(fanin_ptr);
-			
-			// Add to fanin/fanout relationships (C-style array with bounds checking)
-			if (present_elem->fanin_count < MAX_FANIN_PER_ELEM) {
-				present_elem->fanin[present_elem->fanin_count++] = fanin_elem;
-			}
-			if (fanin_elem->fanout_count < MAX_FANOUT_PER_ELEM) {
-				fanin_elem->fanout[fanin_elem->fanout_count++] = present_elem;
-			}
-			
-#ifdef USE_RISCV_VECTOR
-			unsigned long * fanin_location = (unsigned long *)&fanin_elem->present_loc;
-			if (present_elem->fan_locs_count < MAX_FAN_LOCS_PER_ELEM) {
-				present_elem->fan_locs[present_elem->fan_locs_count++] = fanin_location;
-			}
-			unsigned long * fanout_location = (unsigned long *)&present_elem->present_loc;
-			if (fanin_elem->fan_locs_count < MAX_FAN_LOCS_PER_ELEM) {
-				fanin_elem->fan_locs[fanin_elem->fan_locs_count++] = fanout_location;
-			}
-#endif
+// #ifdef USE_COMPILED_NETLIST
+	_num_elements = compiled_num_elements[0];
+	_max_x        = compiled_max_x[0];
+	_max_y        = compiled_max_y[0];
+	_chip_size    = _max_x * _max_y;
+	_total_used   = compiled_total_used[0];
+	assert(_num_elements < _chip_size);
+
+	// 1. Initialize location grid + element defaults
+	printf("Initializing netlist with %lu elements, max_x=%lu, max_y=%lu\n",
+	       _num_elements, _max_x, _max_y);
+	unsigned i_elem = 0;
+	for (int x = 0; x < (int)_max_x; x++) {
+		for (int y = 0; y < (int)_max_y; y++) {
+			location_t* loc = &_locations[x][y];
+			loc->x = x;
+			loc->y = y;
+			_elements[i_elem].present_loc.Set(loc);
+			_elements[i_elem].fanin_count    = 0;
+			_elements[i_elem].fanout_count   = 0;
+			_elements[i_elem].fan_locs_count = 0;
+			strncpy(_elements[i_elem].item_name, "empty", MAX_ELEMENT_NAME_LENGTH - 1);
+			_elements[i_elem].item_name[MAX_ELEMENT_NAME_LENGTH - 1] = '\0';
+			i_elem++;
 		}
 	}
-#else
-	assert(false); // USE_COMPILED_NETLIST must be defined
+
+	// 2. Copy element names (direct index, no search)
+	printf("Copying element names...\n");
+	for (unsigned i = 0; i < _total_used; i++) {
+		strncpy(_elements[i].item_name, compiled_element_names[i],
+		        MAX_ELEMENT_NAME_LENGTH - 1);
+		_elements[i].item_name[MAX_ELEMENT_NAME_LENGTH - 1] = '\0';
+	}
+
+	// 3. Fanin pointers from pre-computed indices
+	printf("Setting up fanin pointers...\n");
+	for (unsigned i = 0; i < _total_used; i++) {
+		unsigned off = compiled_fanin_offsets[i];
+		unsigned cnt = compiled_fanin_counts[i];
+		_elements[i].fanin_count = cnt;
+		for (unsigned j = 0; j < cnt; j++) {
+			_elements[i].fanin[j] = &_elements[compiled_fanin_flat[off + j]];
+		}
+	}
+
+	// 4. Fanout pointers from pre-computed indices
+	printf("Setting up fanout pointers...\n");
+	for (unsigned i = 0; i < _total_used; i++) {
+		unsigned off = compiled_fanout_offsets[i];
+		unsigned cnt = compiled_fanout_counts[i];
+		_elements[i].fanout_count = cnt;
+		for (unsigned j = 0; j < cnt; j++) {
+			_elements[i].fanout[j] = &_elements[compiled_fanout_flat[off + j]];
+		}
+	}
+
+#ifdef USE_RISCV_VECTOR
+	// 5. Fan_locs pointers from pre-computed indices
+	printf("Setting up fan_locs pointers...\n");
+	for (unsigned i = 0; i < _total_used; i++) {
+		unsigned off = compiled_fanlocs_offsets[i];
+		unsigned cnt = compiled_fanlocs_counts[i];
+		_elements[i].fan_locs_count = cnt;
+		for (unsigned j = 0; j < cnt; j++) {
+			_elements[i].fan_locs[j] =
+				(unsigned long *)&_elements[compiled_fanlocs_flat[off + j]].present_loc;
+		}
+	}
 #endif
+
+// #else
+// 	assert(false); // USE_COMPILED_NETLIST must be defined
+// #endif
 }
