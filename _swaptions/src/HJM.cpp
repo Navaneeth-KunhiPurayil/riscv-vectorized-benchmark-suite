@@ -397,7 +397,7 @@ int Discount_Factors_Blocking(FTYPE *pdDiscountFactors,
 	  } // end Block loop
 	} 
 
-	free_dvector(pdexpRes, 0,(iN-1)*BLOCKSIZE-1);
+	// free_dvector(pdexpRes, 0,(iN-1)*BLOCKSIZE-1);
 	iSuccess = 1;
 	return iSuccess;
 }
@@ -449,7 +449,7 @@ int Discount_Factors_Blocking_vector(FTYPE *pdDiscountFactors,
 	    	_MM_STORE_f64(&pdDiscountFactors[i*BLOCKSIZE],xpdRatePath,gvl);
 	    }
 	} 
-	free_dvector(pdexpRes, 0,(iN-1)*BLOCKSIZE-1);
+	// free_dvector(pdexpRes, 0,(iN-1)*BLOCKSIZE-1);
 	iSuccess = 1;
 	return iSuccess;
 }

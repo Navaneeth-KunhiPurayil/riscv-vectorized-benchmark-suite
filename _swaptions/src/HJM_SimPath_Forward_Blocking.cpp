@@ -102,13 +102,6 @@ int HJM_SimPath_Forward_Blocking(FTYPE **ppdHJMPath,	//Matrix that stores genera
 {	
 //This function computes and stores an HJM Path for given inputs
 
-//#ifdef USE_RISCV_VECTOR
-	// struct timeval tv1_0, tv2_0;
-	// struct timezone tz_0;
-	// double elapsed0=0.0;
-	// gettimeofday(&tv1_0, &tz_0);
-//#endif
-
 	int iSuccess = 0;
 	int i,j,l; //looping variables
 	FTYPE **pdZ; //vector to store random normals
@@ -132,63 +125,61 @@ int HJM_SimPath_Forward_Blocking(FTYPE **ppdHJMPath,	//Matrix that stores genera
 	_MMR_f64 xZero;
 
 	xZero = _MM_SET_f64(0.0,gvl);
-    //for(int b=0; b<BLOCKSIZE; b++){
-        for(j=0;j<=iN-1;j++) {
-            _MM_STORE_f64(&ppdHJMPath[0][BLOCKSIZE*j],_MM_SET_f64(pdForward[j],gvl),gvl);
-        	for(i=1;i<=iN-1;++i) {
-	      		_MM_STORE_f64(&ppdHJMPath[i][BLOCKSIZE*j],xZero,gvl);
-	    	} //initializing HJMPath to zero
-        }
-    //}
+
+	for(j=0;j<=iN-1;j++) {
+		_MM_STORE_f64(&ppdHJMPath[0][BLOCKSIZE*j],_MM_SET_f64(pdForward[j],gvl),gvl);
+		for(i=1;i<=iN-1;++i) {
+			_MM_STORE_f64(&ppdHJMPath[i][BLOCKSIZE*j],xZero,gvl);
+		} //initializing HJMPath to zero
+	}
 
 #else
- 	for(int b=0; b<BLOCKSIZE; b++){
-	  	for(j=0;j<=iN-1;j++){
-	    	ppdHJMPath[0][BLOCKSIZE*j + b] = pdForward[j]; 
+	for(int b=0; b<BLOCKSIZE; b++){
+		for(j=0;j<=iN-1;j++){
+			ppdHJMPath[0][BLOCKSIZE*j + b] = pdForward[j]; 
 
-	    	for(i=1;i<=iN-1;++i){ 
-	      	ppdHJMPath[i][BLOCKSIZE*j + b]=0; 
-	      	} //initializing HJMPath to zero
-	  	}
+			for(i=1;i<=iN-1;++i){ 
+				ppdHJMPath[i][BLOCKSIZE*j + b]=0; 
+			} //initializing HJMPath to zero
+		}
 	}
 
 #endif
 
-	// -----------------------------------------------------
-//#ifdef USE_RISCV_VECTOR
-    // gettimeofday(&tv2_0, &tz_0);
-    // elapsed0 = (double) (tv2_0.tv_sec-tv1_0.tv_sec) + (double) (tv2_0.tv_usec-tv1_0.tv_usec) * 1.e-6; 
-    // printf("HJM_SimPath_Forward_Blocking first part took %8.8lf secs \n", elapsed0 );
-//#endif	
-
-//#ifdef USE_RISCV_VECTOR
-	// elapsed0=0.0;
-	// gettimeofday(&tv1_0, &tz_0);
-//#endif
-        // =====================================================
-        // sequentially generating random numbers
+	// =====================================================
+	// sequentially generating random numbers
 
 
 #ifdef USE_RISCV_VECTOR
-
- 		RanUnif_vector( lRndSeed ,iFactors , iN ,BLOCKSIZE , randZ);
+	RanUnif_vector( lRndSeed ,iFactors , iN ,BLOCKSIZE , randZ);
 
 #else
 
-        // =====================================================
-        // sequentially generating random numbers
+	// =====================================================
+	// sequentially generating random numbers
 
-        for(int b=0; b<BLOCKSIZE; b++){
-          for(int s=0; s<1; s++){
-            for (j=1;j<=iN-1;++j){
-              for (l=0;l<=iFactors-1;++l){
-                //compute random number in exact same sequence
-                randZ[l][BLOCKSIZE*j + b + s] = RanUnif(lRndSeed);  /* 10% of the total executition time */
-              }
-            }
-          }
-        }
+	for(int b=0; b<BLOCKSIZE; b++){
+		for(int s=0; s<1; s++){
+			for (j=1;j<=iN-1;++j){
+				for (l=0;l<=iFactors-1;++l){
+					//compute random number in exact same sequence
+					randZ[l][BLOCKSIZE*j + b + s] = RanUnif(lRndSeed);  /* 10% of the total executition time */
+				}
+			}
+		}
+	}
 #endif
+
+	// // print all the randz matrix values
+	// for (l=0;l<=iFactors-1;++l){
+	// for (j=1;j<=iN-1;++j){
+	// 	for(int b=0; b<BLOCKSIZE; b++){
+	// 	printf("randZ[%d][%d]=%f\n", l, BLOCKSIZE*j + b, randZ[l][BLOCKSIZE*j + b]);
+	// 	}
+	// }
+	// }
+
+// printf("randz=%x %x %f\n", randZ, randZ[1], randZ[1][BLOCKSIZE]);
 
 //#ifdef USE_RISCV_VECTOR
     // gettimeofday(&tv2_0, &tz_0);
@@ -216,6 +207,15 @@ int HJM_SimPath_Forward_Blocking(FTYPE **ppdHJMPath,	//Matrix that stores genera
 #endif
 
 
+	// // print all the randz matrix values
+	// for (l=0;l<=iFactors-1;++l){
+	// 	for (j=1;j<=iN-1;++j){
+	// 		for(int b=0; b<BLOCKSIZE; b++){
+	// 			printf("pdZ[%d][%d]=%f\n", l, BLOCKSIZE*j + b, pdZ[l][BLOCKSIZE*j + b]);
+	// 		}
+	// 	}
+	// }
+
 //#ifdef USE_RISCV_VECTOR
     // gettimeofday(&tv2_0, &tz_0);
     // elapsed0 = (double) (tv2_0.tv_sec-tv1_0.tv_sec) + (double) (tv2_0.tv_usec-tv1_0.tv_usec) * 1.e-6; 
@@ -236,22 +236,19 @@ int HJM_SimPath_Forward_Blocking(FTYPE **ppdHJMPath,	//Matrix that stores genera
 	gvl = _MMR_VSETVL_E64M1(BLOCKSIZE);
 	_MMR_f64 xdTotalShock;
 
-	//for(int b=0; b<BLOCKSIZE; b++){ // b is the blocks
-	  for (j=1;j<=iN-1;++j) {// j is the timestep
+	for (j=1;j<=iN-1;++j) {// j is the timestep
+		for (l=0;l<=iN-(j+1);++l){ // l is the future steps
+			xdTotalShock = _MM_SET_f64(0.0,gvl);
+			pdDriftxddelt = pdTotalDrift[l]*ddelt;
 
-	    for (l=0;l<=iN-(j+1);++l){ // l is the future steps
-	      xdTotalShock = _MM_SET_f64(0.0,gvl);
-	      pdDriftxddelt = pdTotalDrift[l]*ddelt;
+			for (i=0;i<=iFactors-1;++i){// i steps through the stochastic factors
+			xdTotalShock = _MM_ADD_f64(xdTotalShock, _MM_MUL_f64(_MM_SET_f64(ppdFactors[i][l],gvl), _MM_LOAD_f64(&pdZ[i][BLOCKSIZE*j],gvl),gvl),gvl);
+			}
 
-	      for (i=0;i<=iFactors-1;++i){// i steps through the stochastic factors
-		xdTotalShock = _MM_ADD_f64(xdTotalShock, _MM_MUL_f64(_MM_SET_f64(ppdFactors[i][l],gvl), _MM_LOAD_f64(&pdZ[i][BLOCKSIZE*j],gvl),gvl),gvl);
-	      }
-
-	      _MM_STORE_f64(&(ppdHJMPath[j][BLOCKSIZE*l]), _MM_ADD_f64(_MM_LOAD_f64(&ppdHJMPath[j-1][BLOCKSIZE*(l+1)],gvl),_MM_ADD_f64(_MM_SET_f64(pdDriftxddelt,gvl),_MM_MUL_f64(_MM_SET_f64(sqrt_ddelt,gvl),xdTotalShock,gvl),gvl),gvl),gvl);
-	      //as per formula
-	    }
-	  }
-	//} // end Blocks
+			_MM_STORE_f64(&(ppdHJMPath[j][BLOCKSIZE*l]), _MM_ADD_f64(_MM_LOAD_f64(&ppdHJMPath[j-1][BLOCKSIZE*(l+1)],gvl),_MM_ADD_f64(_MM_SET_f64(pdDriftxddelt,gvl),_MM_MUL_f64(_MM_SET_f64(sqrt_ddelt,gvl),xdTotalShock,gvl),gvl),gvl),gvl);
+			//as per formula
+		}
+	}
 
 #else
  	// =====================================================
@@ -263,7 +260,7 @@ int HJM_SimPath_Forward_Blocking(FTYPE **ppdHJMPath,	//Matrix that stores genera
 	      dTotalShock = 0;
 	      
 	      for (i=0;i<=iFactors-1;++i){// i steps through the stochastic factors
-		dTotalShock += ppdFactors[i][l]* pdZ[i][BLOCKSIZE*j + b];		  		
+			dTotalShock += ppdFactors[i][l]* pdZ[i][BLOCKSIZE*j + b];		  		
 	      }	      	   
 
 	      ppdHJMPath[j][BLOCKSIZE*l+b] = ppdHJMPath[j-1][BLOCKSIZE*(l+1)+b]+ pdTotalDrift[l]*ddelt + sqrt_ddelt*dTotalShock;
@@ -280,8 +277,8 @@ int HJM_SimPath_Forward_Blocking(FTYPE **ppdHJMPath,	//Matrix that stores genera
     // printf("HJM_SimPath_Forward_Blocking fourth part took %8.8lf secs \n", elapsed0 );
 //#endif
 
-	free_dmatrix(pdZ, 0, iFactors -1, 0, iN*BLOCKSIZE -1);
-	free_dmatrix(randZ, 0, iFactors -1, 0, iN*BLOCKSIZE -1);
+	// free_dmatrix(pdZ, 0, iFactors -1, 0, iN*BLOCKSIZE -1);
+	// free_dmatrix(randZ, 0, iFactors -1, 0, iN*BLOCKSIZE -1);
 	iSuccess = 1;
 	return iSuccess;
 }

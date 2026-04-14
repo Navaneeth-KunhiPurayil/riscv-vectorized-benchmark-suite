@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-#include <iostream>
+// #include <iostream>
 
 // #include <time.h>
 // #include <sys/time.h>
@@ -40,9 +40,12 @@ tbb::cache_aligned_allocator<parm> memory_parm;
 #include <hooks.h>
 #endif
 
-int NUM_TRIALS = DEFAULT_NUM_TRIALS;
+#include "printf.h"
+#include "runtime.h"
+
+int NUM_TRIALS = 128; //tiny
 int nThreads = 1;
-int nSwaptions = 1;
+int nSwaptions = 1; //tiny
 int iN = 11;
 //FTYPE dYears = 5.5;
 int iFactors = 3;
@@ -109,35 +112,38 @@ void * worker(void *arg){
 
   if(tid == nThreads -1 )
     end = nSwaptions;
-       int BLOCK_SIZE_AUX;
-    // 1 run for every swaption, HJM_Swaption_Blocking kernel can be vectorized because is related to Number of Simulations
-    for(int i=beg; i < end; i++) {
 
-      #ifdef USE_RISCV_VECTOR
-        // Vector seed to get the randon number with vector code
-        unsigned long int gvl = _MMR_VSETVL_E64M1(NUM_TRIALS);
-        swaption_seed_vector = (long*)malloc(gvl*sizeof(long));
-        for(int j=0; j < gvl; j++) {
+  int BLOCK_SIZE_AUX;
+  // 1 run for every swaption, HJM_Swaption_Blocking kernel can be vectorized because is related to Number of Simulations
+  for(int i=beg; i < end; i++) {
+
+    #ifdef USE_RISCV_VECTOR
+      // Vector seed to get the randon number with vector code
+      unsigned long int gvl = _MMR_VSETVL_E64M1(NUM_TRIALS);
+      swaption_seed_vector = (long*)baremetal_malloc(gvl*sizeof(long));
+      for(int j=0; j < gvl; j++) {
         swaption_seed_vector[j] = swaption_seed + j + (i * gvl);
-        }
-        BLOCK_SIZE_AUX = gvl;
-      #else
-        swaption_seed_vector = (long*)malloc(1*sizeof(long));
-        swaption_seed_vector[0] = swaption_seed + i;
-        BLOCK_SIZE_AUX = BLOCK_SIZE;
-      #endif
+      }
+      BLOCK_SIZE_AUX = gvl;
+    #else
+      swaption_seed_vector = (long*)baremetal_malloc(1*sizeof(long));
+      swaption_seed_vector[0] = swaption_seed + i;
+      BLOCK_SIZE_AUX = BLOCK_SIZE;
+    #endif
 
-       int iSuccess = HJM_Swaption_Blocking(pdSwaptionPrice,  swaptions[i].dStrike,
-                                         swaptions[i].dCompounding, swaptions[i].dMaturity,
-                                         swaptions[i].dTenor, swaptions[i].dPaymentInterval,
-                                         swaptions[i].iN, swaptions[i].iFactors, swaptions[i].dYears,
-                                         swaptions[i].pdYield, swaptions[i].ppdFactors,
-                                         swaption_seed_vector, NUM_TRIALS, BLOCK_SIZE_AUX, 0);
-       assert(iSuccess == 1);
-       swaptions[i].dSimSwaptionMeanPrice = pdSwaptionPrice[0];
-       swaptions[i].dSimSwaptionStdError = pdSwaptionPrice[1];
-     }
-   return NULL;
+      int iSuccess = HJM_Swaption_Blocking(pdSwaptionPrice,  swaptions[i].dStrike,
+                                        swaptions[i].dCompounding, swaptions[i].dMaturity,
+                                        swaptions[i].dTenor, swaptions[i].dPaymentInterval,
+                                        swaptions[i].iN, swaptions[i].iFactors, swaptions[i].dYears,
+                                        swaptions[i].pdYield, swaptions[i].ppdFactors,
+                                        swaption_seed_vector, NUM_TRIALS, BLOCK_SIZE_AUX, 0);
+      assert(iSuccess == 1);
+      swaptions[i].dSimSwaptionMeanPrice = pdSwaptionPrice[0];
+      swaptions[i].dSimSwaptionStdError = pdSwaptionPrice[1];
+
+      // printf("Swaption %d: Mean Price = %f, Std Error = %f\n", i, swaptions[i].dSimSwaptionMeanPrice, swaptions[i].dSimSwaptionStdError);
+  }
+  return NULL;
 }
 
 
@@ -168,39 +174,25 @@ int main(int argc, char *argv[])
         printf("PARSEC Benchmark Suite Version "__PARSEC_XSTRING(PARSEC_VERSION)"\n");
 	fflush(NULL);
 #else
-        printf("PARSEC Benchmark Suite\n");
+  printf("PARSEC Benchmark Suite\n");
 	fflush(NULL);
 #endif //PARSEC_VERSION
 #ifdef ENABLE_PARSEC_HOOKS
 	__parsec_bench_begin(__parsec_swaptions);
 #endif
 
-        if(argc == 1)
-        {
-          print_usage(argv[0]);
-          exit(1);
-        }
+  if(argc == 1) {
+    print_usage(argv[0]);
+    exit(1);
+  }
 
-        for (int j=1; j<argc; j++) {
-	  if (!strcmp("-sm", argv[j])) {NUM_TRIALS = atoi(argv[++j]);}
-	  else if (!strcmp("-nt", argv[j])) {nThreads = atoi(argv[++j]);}
-	  else if (!strcmp("-ns", argv[j])) {nSwaptions = atoi(argv[++j]);}
-	  else if (!strcmp("-sd", argv[j])) {seed = atoi(argv[++j]);}
-          else {
-            fprintf(stderr,"Error: Unknown option: %s\n", argv[j]);
-            print_usage(argv[0]);
-            exit(1);
-          }
-        }
+  if(nSwaptions < nThreads) {
+    printf("Error: Fewer swaptions than threads.\n");
+    exit(1);
+  }
 
-        if(nSwaptions < nThreads) {
-          fprintf(stderr,"Error: Fewer swaptions than threads.\n");
-          print_usage(argv[0]);
-          exit(1);
-        }
-
-        printf("Number of Simulations: %d,  Number of threads: %d Number of swaptions: %d\n", NUM_TRIALS, nThreads, nSwaptions);
-        swaption_seed = (long)(2147483647L * RanUnif(&seed));
+  printf("Number of Simulations: %d,  Number of threads: %d Number of swaptions: %d\n", NUM_TRIALS, nThreads, nSwaptions);
+  swaption_seed = (long)(2147483647L * RanUnif(&seed));
 
 #ifdef ENABLE_THREADS
 
@@ -229,12 +221,12 @@ int main(int argc, char *argv[])
 #else
 	if (nThreads != 1)
 	{
-		fprintf(stderr,"Number of threads must be 1 (serial version)\n");
+		printf("Number of threads must be 1 (serial version)\n");
 		exit(1);
 	}
 #endif //ENABLE_THREADS
 
-        // initialize input dataset
+  // initialize input dataset
 	factors = dmatrix(0, iFactors-1, 0, iN-2);
 	//the three rows store vol data for the three factors
 	factors[0][0]= .01;
@@ -270,53 +262,42 @@ int main(int argc, char *argv[])
 	factors[2][8]= -.001000;
 	factors[2][9]= -.001250;
 
-        // setting up multiple swaptions
-        swaptions =
+  // setting up multiple swaptions
+  swaptions =
 #ifdef TBB_VERSION
 	  (parm *)memory_parm.allocate(sizeof(parm)*nSwaptions, NULL);
 #else
-	  (parm *)malloc(sizeof(parm)*nSwaptions);
+	  (parm *)baremetal_malloc(sizeof(parm)*nSwaptions);
 #endif
 
-        int k;
-        for (i = 0; i < nSwaptions; i++) {
-          swaptions[i].Id = i;
-          swaptions[i].iN = iN;
-          swaptions[i].iFactors = iFactors;
-          swaptions[i].dYears = 5.0 + ((int)(60*RanUnif(&seed)))*0.25; //5 to 20 years in 3 month intervals
+  int k;
+  for (i = 0; i < nSwaptions; i++) {
+    swaptions[i].Id = i;
+    swaptions[i].iN = iN;
+    swaptions[i].iFactors = iFactors;
+    swaptions[i].dYears = 5.0 + ((int)(60*RanUnif(&seed)))*0.25; //5 to 20 years in 3 month intervals
 
-          swaptions[i].dStrike = 0.1 + ((int)(49*RanUnif(&seed)))*0.1; //strikes ranging from 0.1 to 5.0 in steps of 0.1
-          swaptions[i].dCompounding = 0;
-          swaptions[i].dMaturity = 1.0;
-          swaptions[i].dTenor = 2.0;
-          swaptions[i].dPaymentInterval = 1.0;
+    swaptions[i].dStrike = 0.1 + ((int)(49*RanUnif(&seed)))*0.1; //strikes ranging from 0.1 to 5.0 in steps of 0.1
+    swaptions[i].dCompounding = 0;
+    swaptions[i].dMaturity = 1.0;
+    swaptions[i].dTenor = 2.0;
+    swaptions[i].dPaymentInterval = 1.0;
 
-          swaptions[i].pdYield = dvector(0,iN-1);;
-          swaptions[i].pdYield[0] = .1;
-          for(j=1;j<=swaptions[i].iN-1;++j)
-            swaptions[i].pdYield[j] = swaptions[i].pdYield[j-1]+.005;
+    swaptions[i].pdYield = dvector(0,iN-1);
+    swaptions[i].pdYield[0] = .1;
+    for(j=1;j<=swaptions[i].iN-1;++j)
+      swaptions[i].pdYield[j] = swaptions[i].pdYield[j-1]+.005;
 
-          swaptions[i].ppdFactors = dmatrix(0, swaptions[i].iFactors-1, 0, swaptions[i].iN-2);
-          for(k=0;k<=swaptions[i].iFactors-1;++k)
-                 for(j=0;j<=swaptions[i].iN-2;++j)
-                        swaptions[i].ppdFactors[k][j] = factors[k][j];
-        }
-
+    swaptions[i].ppdFactors = dmatrix(0, swaptions[i].iFactors-1, 0, swaptions[i].iN-2);
+    for(k=0;k<=swaptions[i].iFactors-1;++k)
+            for(j=0;j<=swaptions[i].iN-2;++j)
+                  swaptions[i].ppdFactors[k][j] = factors[k][j];
+  }
 
 	// **********Calling the Swaption Pricing Routine*****************
 #ifdef ENABLE_PARSEC_HOOKS
 	__parsec_roi_begin();
 #endif
-
-//#ifdef USE_RISCV_VECTOR
-    long long start,end;
-    start = get_time();
-
-    // Start instruction and cycles count of the region of interest
-    //unsigned long cycles1, cycles2, instr2, instr1;
-    //instr1 = get_inst_count();
-    //cycles1 = get_cycles_count();
-//#endif
 
 #ifdef ENABLE_THREADS
 
@@ -326,13 +307,13 @@ int main(int argc, char *argv[])
 #else
 
 	int threadIDs[nThreads];
-        for (i = 0; i < nThreads; i++) {
-          threadIDs[i] = i;
-          pthread_create(&threads[i], &pthread_custom_attr, worker, &threadIDs[i]);
-        }
-        for (i = 0; i < nThreads; i++) {
-          pthread_join(threads[i], NULL);
-        }
+  for (i = 0; i < nThreads; i++) {
+    threadIDs[i] = i;
+    pthread_create(&threads[i], &pthread_custom_attr, worker, &threadIDs[i]);
+  }
+  for (i = 0; i < nThreads; i++) {
+    pthread_join(threads[i], NULL);
+  }
 
 	free(threads);
 
@@ -340,40 +321,25 @@ int main(int argc, char *argv[])
 
 #else
 	int threadID=0;
+  start_timer();
 	worker(&threadID);
+  stop_timer();
 #endif //ENABLE_THREADS
 
-//#ifdef USE_RISCV_VECTOR
-    // End instruction and cycles count of the region of interest
-    //instr2 = get_inst_count();
-    //cycles2 = get_cycles_count();
-    // Instruction and cycles count of the region of interest
-    //printf("-CSR   NUMBER OF EXEC CYCLES :%lu\n", cycles2 - cycles1);
-    //printf("-CSR   NUMBER OF INSTRUCTIONS EXECUTED :%lu\n", instr2 - instr1);
-
-    end = get_time();
-    printf("\n\nSwaption Pricing Routine took %8.8lf secs   \n", elapsed_time(start, end));
-//#endif
+  printf("\n\nSwaption Pricing Routine took %ld [sw-cycles] \n", get_timer());
 
 #ifdef ENABLE_PARSEC_HOOKS
 	__parsec_roi_end();
 #endif
 
-        for (i = 0; i < nSwaptions; i++) {
-          printf("Swaption %d: [SwaptionPrice: %.10lf StdError: %.10lf] \n",
-                   i, swaptions[i].dSimSwaptionMeanPrice, swaptions[i].dSimSwaptionStdError);
-        }
-
-        for (i = 0; i < nSwaptions; i++) {
-          free_dvector(swaptions[i].pdYield, 0, swaptions[i].iN-1);
-	  free_dmatrix(swaptions[i].ppdFactors, 0, swaptions[i].iFactors-1, 0, swaptions[i].iN-2);
-        }
-
+  for (i = 0; i < nSwaptions; i++) {
+    printf("Swaption %d: [SwaptionPrice: %.10lf StdError: %.10lf] \n",
+              i, swaptions[i].dSimSwaptionMeanPrice, swaptions[i].dSimSwaptionStdError);
+  }
 
 #ifdef TBB_VERSION
 	memory_parm.deallocate(swaptions, sizeof(parm));
 #else
-        free(swaptions);
 #endif // TBB_VERSION
 
 	//***********************************************************

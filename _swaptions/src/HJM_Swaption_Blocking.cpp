@@ -140,9 +140,9 @@ int HJM_Swaption_Blocking(FTYPE *pdSwaptionPrice, //Output vector that will stor
   for (i=iFreqRatio;i<=iSwapTimePoints;i+=iFreqRatio)
     {
       if(i != iSwapTimePoints)
-	pdSwapPayoffs[i] = exp(dStrikeCont*dPaymentInterval) - 1; //the bond pays coupon equal to this amount
+	      pdSwapPayoffs[i] = exp(dStrikeCont*dPaymentInterval) - 1; //the bond pays coupon equal to this amount
       if(i == iSwapTimePoints)
-	pdSwapPayoffs[i] = exp(dStrikeCont*dPaymentInterval); //at terminal time point, bond pays coupon plus par amount
+	      pdSwapPayoffs[i] = exp(dStrikeCont*dPaymentInterval); //at terminal time point, bond pays coupon plus par amount
     }
 
   //generating forward curve at t=0 from supplied yield curve
@@ -155,11 +155,13 @@ int HJM_Swaption_Blocking(FTYPE *pdSwaptionPrice, //Output vector that will stor
   if (iSuccess!=1)
     return iSuccess;
   
+  // printf("Starting Swaption Simulations...\n");
+
   dSumSimSwaptionPrice = 0.0;
   dSumSquareSimSwaptionPrice = 0.0;
 
-  //printf("lTrials = %d\n",lTrials);
-  //printf("BLOCKSIZE = %d\n",BLOCKSIZE);
+  // printf("lTrials = %d\n",lTrials);
+  // printf("BLOCKSIZE = %d\n",BLOCKSIZE);
   //Simulations begin:
   for (l=0;l<=lTrials-1;l+=BLOCKSIZE) {
 
@@ -168,6 +170,15 @@ int HJM_Swaption_Blocking(FTYPE *pdSwaptionPrice, //Output vector that will stor
       iSuccess = HJM_SimPath_Forward_Blocking(ppdHJMPath, iN, iFactors, dYears, pdForward, pdTotalDrift,ppdFactors, iRndSeed, BLOCKSIZE_AUX); /* GC: 51% of the time goes here */
       if (iSuccess!=1)
 	     return iSuccess;
+
+      // // print all the randz matrix values
+      // for (int l=0;l<=iN-1;++l){
+      //   for (int j=1;j<=iN-1;++j){
+      //     for(int b=0; b<BLOCKSIZE; b++){
+      //       printf("ppdHJMPath[%d][%d]=%f\n", l, BLOCKSIZE*j + b, ppdHJMPath[l][BLOCKSIZE*j + b]);
+      //     }
+      //   }
+      // }
     
       //now we compute the discount factor vector
 
@@ -206,40 +217,40 @@ int HJM_Swaption_Blocking(FTYPE *pdSwaptionPrice, //Output vector that will stor
       // Simulation
       
       #ifdef USE_RISCV_VECTOR
-            unsigned long int gvl = _MMR_VSETVL_E64M1(BLOCKSIZE_AUX);
-            
-            _MMR_f64    xpdSwapDiscountFactors;
-            _MMR_f64    xpdSwapPayoffs;
-            _MMR_f64    xdFixedLegValue             = _MM_SET_f64(0.0,gvl);
-            _MMR_f64    zero                        = _MM_SET_f64(0.0,gvl);
-            _MMR_f64    oNE                         = _MM_SET_f64(1.0,gvl);
-            _MMR_f64    xdSumSimSwaptionPrice;
-            _MMR_f64    xdSumSquareSimSwaptionPrice;
+        unsigned long int gvl = _MMR_VSETVL_E64M1(BLOCKSIZE_AUX);
+        
+        _MMR_f64    xpdSwapDiscountFactors;
+        _MMR_f64    xpdSwapPayoffs;
+        _MMR_f64    xdFixedLegValue             = _MM_SET_f64(0.0,gvl);
+        _MMR_f64    zero                        = _MM_SET_f64(0.0,gvl);
+        _MMR_f64    oNE                         = _MM_SET_f64(1.0,gvl);
+        _MMR_f64    xdSumSimSwaptionPrice;
+        _MMR_f64    xdSumSquareSimSwaptionPrice;
 
-            for (i=0;i<=iSwapVectorLength-1;++i){
-                  xpdSwapDiscountFactors = _MM_LOAD_f64(&pdSwapDiscountFactors[i*BLOCKSIZE_AUX],gvl);
-                  xpdSwapPayoffs = _MM_SET_f64(pdSwapPayoffs[i],gvl);
-                  xdFixedLegValue = _MM_MACC_f64(xdFixedLegValue,xpdSwapPayoffs,xpdSwapDiscountFactors,gvl);
-              }
+        for (i=0;i<=iSwapVectorLength-1;++i){
+              xpdSwapDiscountFactors = _MM_LOAD_f64(&pdSwapDiscountFactors[i*BLOCKSIZE_AUX],gvl);
+              xpdSwapPayoffs = _MM_SET_f64(pdSwapPayoffs[i],gvl);
+              xdFixedLegValue = _MM_MACC_f64(xdFixedLegValue,xpdSwapPayoffs,xpdSwapDiscountFactors,gvl);
+          }
 
-            xdFixedLegValue = _MM_MAX_f64(_MM_SUB_f64(xdFixedLegValue,oNE,gvl), zero,gvl);
-            xdFixedLegValue = _MM_MUL_f64(xdFixedLegValue,_MM_SET_f64(pdPayoffDiscountFactors[iSwapStartTimeIndex*BLOCKSIZE_AUX],gvl),gvl);
+        xdFixedLegValue = _MM_MAX_f64(_MM_SUB_f64(xdFixedLegValue,oNE,gvl), zero,gvl);
+        xdFixedLegValue = _MM_MUL_f64(xdFixedLegValue,_MM_SET_f64(pdPayoffDiscountFactors[iSwapStartTimeIndex*BLOCKSIZE_AUX],gvl),gvl);
 
-            // ========= end simulation ======================================
-            //xdSumSimSwaptionPrice       = _MM_LOAD_f64(&dSumSimSwaptionPrice,1);
-            //xdSumSquareSimSwaptionPrice = _MM_LOAD_f64(&dSumSquareSimSwaptionPrice,1);
-            xdSumSimSwaptionPrice       = _MM_SET_f64(dSumSimSwaptionPrice,1);
-            xdSumSquareSimSwaptionPrice = _MM_SET_f64(dSumSquareSimSwaptionPrice,1);
+        // ========= end simulation ======================================
+        //xdSumSimSwaptionPrice       = _MM_LOAD_f64(&dSumSimSwaptionPrice,1);
+        //xdSumSquareSimSwaptionPrice = _MM_LOAD_f64(&dSumSquareSimSwaptionPrice,1);
+        xdSumSimSwaptionPrice       = _MM_SET_f64(dSumSimSwaptionPrice,1);
+        xdSumSquareSimSwaptionPrice = _MM_SET_f64(dSumSquareSimSwaptionPrice,1);
 
-            // accumulate into the aggregating variables =====================
-            xdSumSimSwaptionPrice = _MM_REDSUM_f64(xdFixedLegValue,xdSumSimSwaptionPrice,gvl);
-            xdSumSquareSimSwaptionPrice = _MM_REDSUM_f64(_MM_MUL_f64(xdFixedLegValue,xdFixedLegValue,gvl),xdSumSquareSimSwaptionPrice,gvl);
+        // accumulate into the aggregating variables =====================
+        xdSumSimSwaptionPrice = _MM_REDSUM_f64(xdFixedLegValue,xdSumSimSwaptionPrice,gvl);
+        xdSumSquareSimSwaptionPrice = _MM_REDSUM_f64(_MM_MUL_f64(xdFixedLegValue,xdFixedLegValue,gvl),xdSumSquareSimSwaptionPrice,gvl);
 
-            _MM_STORE_f64(&dSumSimSwaptionPrice,xdSumSimSwaptionPrice,1);
-            _MM_STORE_f64(&dSumSquareSimSwaptionPrice,xdSumSquareSimSwaptionPrice,1);
+        dSumSimSwaptionPrice = _MM_VGETFIRST_f64(xdSumSimSwaptionPrice);
+        dSumSquareSimSwaptionPrice = _MM_VGETFIRST_f64(xdSumSquareSimSwaptionPrice);
       #else
 
-      for (b=0;b<BLOCKSIZE_AUX;b++){
+        for (b=0;b<BLOCKSIZE_AUX;b++){
           dFixedLegValue = 0.0;
           for (i=0;i<=iSwapVectorLength-1;++i){
               dFixedLegValue += pdSwapPayoffs[i]*pdSwapDiscountFactors[i*BLOCKSIZE_AUX + b];
@@ -250,12 +261,11 @@ int HJM_Swaption_Blocking(FTYPE *pdSwaptionPrice, //Output vector that will stor
           // accumulate into the aggregating variables =====================
           dSumSimSwaptionPrice += dDiscSwaptionPayoff;
           dSumSquareSimSwaptionPrice += dDiscSwaptionPayoff*dDiscSwaptionPayoff;
-      } // END BLOCK simulation
+        } // END BLOCK simulation
 
       #endif
   }
 
-  // Simulation Results Stored
   dSimSwaptionMeanPrice = dSumSimSwaptionPrice/lTrials;
   dSimSwaptionStdError = sqrt((dSumSquareSimSwaptionPrice-dSumSimSwaptionPrice*dSumSimSwaptionPrice/lTrials)/
 			      (lTrials-1.0))/sqrt((FTYPE)lTrials);

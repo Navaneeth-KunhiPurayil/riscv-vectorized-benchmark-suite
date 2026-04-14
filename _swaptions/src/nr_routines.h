@@ -1,5 +1,7 @@
 #include "HJM_type.h"
 
+#include "printf.h"
+
 void     nrerror(const char *error_text);
 int      choldc(FTYPE **a, int n);
 void     gaussj(FTYPE **a, int n, FTYPE **b, int m);

@@ -92,13 +92,13 @@ void CumNormalInv_vector( FTYPE* u ,FTYPE* output ,unsigned long int gvl)
   // Reference: Moro, B., 1995, "The Full Monte," RISK (February), 57-58.
   
   _MMR_f64   x;
-  _MMR_f64   r1;
+  _MMR_f64   r1, r1_;
   _MMR_f64   r;
 
   _MMR_f64   zero    = _MM_SET_f64(0.0,gvl);
   _MMR_f64   one     = _MM_SET_f64(1.0,gvl);
   _MMR_f64   Cons1   = _MM_SET_f64(0.5,gvl);
-  _MMR_f64   Cons2   = _MM_SET_f64(0.42,gvl);
+  // _MMR_f64   Cons2   = _MM_SET_f64(0.42,gvl); Move below to avoid spilling done by compiler
   _MMR_f64   vU      = _MM_LOAD_f64(u,gvl);
 
   _MMR_f64   a0      = _MM_SET_f64(a[0],gvl);
@@ -135,7 +135,12 @@ void CumNormalInv_vector( FTYPE* u ,FTYPE* output ,unsigned long int gvl)
   // SECOND PART
   mask2  = _MM_VFGT_f64(x,zero,gvl); 
   r1 = vU;
-  r1   = _MM_SUB_f64_MASK(mask2,one,vU,gvl); //sub(vs2,vs1)
+  //-----------------------------------------------------------
+  // r1   = _MM_SUB_f64_MASK(mask2,one,vU,gvl); //sub(vs2,vs1)
+  r1_ = _MM_SUB_f64(one,vU,gvl);
+  r1  = _MM_MERGE_f64(r1_, vU, mask2, gvl);
+  //-----------------------------------------------------------
+
   Cons1 = _MM_LOG_f64(r1,gvl);
   r1 = _MM_VFSGNJN_f64(Cons1,Cons1,gvl);
   r1 = _MM_LOG_f64(r1,gvl);
@@ -144,7 +149,7 @@ void CumNormalInv_vector( FTYPE* u ,FTYPE* output ,unsigned long int gvl)
   mask3  = _MM_VFLT_f64(x,zero,gvl); 
   r1 = _MM_MERGE_f64(_MM_VFSGNJN_f64(r1,r1,gvl),r1, mask3,gvl);
 
-  mask1  = _MM_VFLT_f64(_MM_VFSGNJX_f64(x,x,gvl),Cons2,gvl); 
+  mask1  = _MM_VFLT_f64(_MM_VFSGNJX_f64(x,x,gvl),_MM_SET_f64(0.42,gvl),gvl); 
   r = _MM_MERGE_f64(r,r1, mask1,gvl);
 
   _MM_STORE_f64(output,r,gvl);

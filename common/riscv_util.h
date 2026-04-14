@@ -6,6 +6,9 @@
 #include <time.h>
 #include <sys/time.h>
 
+#ifndef RISCV_UTIL_H
+#define RISCV_UTIL_H
+
 static long long get_time() {
     struct timeval tv;
     gettimeofday(&tv, NULL);
@@ -43,7 +46,7 @@ static unsigned long get_cycles_count()
 
 #define ALIGN_UP(x, a)  (((x) + (a) - 1) & ~((a) - 1))
 
-void * baremetal_malloc(int incr)
+inline void * baremetal_malloc(int incr)
 {
     extern char l2_alloc_base;   /* Set by linker */
     static char *heap_end = 0;
@@ -65,3 +68,5 @@ void * baremetal_malloc(int incr)
 
     return (void *)result;
 }
+
+#endif // RISCV_UTIL_H

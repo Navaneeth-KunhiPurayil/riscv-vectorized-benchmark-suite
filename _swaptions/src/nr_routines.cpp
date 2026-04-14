@@ -4,17 +4,16 @@
 
 #include "nr_routines.h"
 #include "HJM_type.h"
+#include "common/riscv_util.h"
 
 #define SWAP(a,b) {temp=(a);(a)=(b);(b)=temp;}
-
-
 
 void nrerror(const char *error_text)
 {
   // Numerical Recipes standard error handler
-	fprintf( stderr,"Numerical Recipes run-time error...\n" );
-	fprintf( stderr,"%s\n",error_text );
-	fprintf( stderr,"...now exiting to system...\n" );
+	printf( "Numerical Recipes run-time error...\n" );
+	printf( "%s\n",error_text );
+	printf( "...now exiting to system...\n" );
 	exit(1);
 
 } // end of nrerror
@@ -135,9 +134,10 @@ FTYPE *dvector( long nl, long nh )
 
 	FTYPE *v;
 
-	v=(FTYPE *)malloc((size_t) ((nh-nl+2)*sizeof(FTYPE)));
-	if (!v) nrerror("allocation failure in dvector()");
-	return v-nl+1;
+	v=(FTYPE *)baremetal_malloc((size_t) ((nh-nl+1)*sizeof(FTYPE)));
+	if (!v)
+		nrerror("allocation failure in dvector()");
+	return v-nl;
 
 } // end of dvector
 
@@ -146,7 +146,7 @@ void free_dvector( FTYPE *v, long nl, long nh )
 {
   // free a FTYPE vector allocated with dvector()
 
-	free((char*) (v+nl-1));
+	free((char*) (v+nl));
 
 } // end of free_dvector
 
@@ -156,21 +156,22 @@ FTYPE **dmatrix( long nrl, long nrh, long ncl, long nch )
   // allocate a FTYPE matrix with subscript range m[nrl..nrh][ncl..nch]
 
 	long i, nrow=nrh-nrl+1,ncol=nch-ncl+1;
+	long stride = ALIGN_UP(ncol * sizeof(FTYPE), ALIGNMENT) / sizeof(FTYPE);
 	FTYPE **m;
 
   // allocate pointers to rows
-	m=(FTYPE **) malloc((size_t)((nrow+1)*sizeof(FTYPE*)));
-	if (!m) nrerror("allocation failure 1 in dmatrix()");
-	m += 1;
+	m=(FTYPE **) baremetal_malloc((size_t)((nrow)*sizeof(FTYPE*)));
+	if (!m) 
+		nrerror("allocation failure 1 in dmatrix()");
 	m -= nrl;
 
   // allocate rows and set pointers to them
-	m[nrl]=(FTYPE *) malloc((size_t)((nrow*ncol+1)*sizeof(FTYPE)));
-	if (!m[nrl]) nrerror("allocation failure 2 in dmatrix()");
-	m[nrl] += 1;
+	m[nrl]=(FTYPE *) baremetal_malloc((size_t)((nrow*stride)*sizeof(FTYPE)));
+	if (!m[nrl]) 
+		nrerror("allocation failure 2 in dmatrix()");
 	m[nrl] -= ncl;
 
-	for(i=nrl+1;i<=nrh;i++) m[i]=m[i-1]+ncol;
+	for(i=nrl+1;i<=nrh;i++) m[i]=m[i-1]+stride;
 
   // return pointer to array of pointers to rows
 	return m;
@@ -182,8 +183,8 @@ void free_dmatrix( FTYPE **m, long nrl, long nrh, long ncl, long nch )
 {
   // free a FTYPE matrix allocated by dmatrix()
 
-	free((char*) (m[nrl]+ncl-1));
-	free((char*) (m+nrl-1));
+	free((char*) (m[nrl]+ncl));
+	free((char*) (m+nrl));
 
 } // end of free_dmatrix
 
