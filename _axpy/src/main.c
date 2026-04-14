@@ -23,12 +23,12 @@
 #endif
 
 extern char end;
+extern int n;
 
 int main()
 {
-    long n = 8192;
 
-    printf("Running AXPY with AraXL config L=%d C=%d\n", NR_LANES, NR_CLUSTERS);
+    printf("Running AXPY VL=%d with AraXL config L=%d C=%d\n", n, NR_LANES, NR_CLUSTERS);
 
     // /* Allocate the source and result vectors */
     double *dx     = (double*)baremetal_malloc(n*sizeof(double));

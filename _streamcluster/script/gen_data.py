@@ -33,20 +33,27 @@ def emit(name, array, alignment='8'):
     print("    .word 0x%s" % s)
 
 # create a matrix of chunksize * dim elements
+if len(sys.argv) > 6:
+  kmin = int(sys.argv[1])
+  kmax = int(sys.argv[2])
+  dim = int(sys.argv[3])
+  n = int(sys.argv[4])
+  chunksize = int(sys.argv[5])
+  clustersize = int(sys.argv[6])
+else :
+  # Min & Max number of clusters
+  kmin = 3
+  kmax = 3
 
-# Min & Max number of clusters
-kmin = 3
-kmax = 3
+  # Dimension of each datapaoint and number of datapoints
+  dim = 128
+  n = 8
 
-# Dimension of each datapaoint and number of datapoints
-dim = 128
-n = 8
+  # Chunks of datapoints streamed, for now same as numer of datapoints itself
+  chunksize = 8
 
-# Chunks of datapoints streamed, for now same as numer of datapoints itself
-chunksize = 8
-
-# To hold the centers, should be greated than kmax
-clustersize = 10
+  # To hold the centers, should be greated than kmax
+  clustersize = 10
 
 block = np.random.rand(chunksize * dim).astype(np.float32)
 

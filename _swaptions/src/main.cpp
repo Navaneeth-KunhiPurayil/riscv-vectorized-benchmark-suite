@@ -43,11 +43,11 @@ tbb::cache_aligned_allocator<parm> memory_parm;
 #include "printf.h"
 #include "runtime.h"
 
-int NUM_TRIALS = 128; //tiny
+extern int NUM_TRIALS;
+extern int nSwaptions;
 int nThreads = 1;
-int nSwaptions = 1; //tiny
+
 int iN = 11;
-//FTYPE dYears = 5.5;
 int iFactors = 3;
 parm *swaptions;
 
