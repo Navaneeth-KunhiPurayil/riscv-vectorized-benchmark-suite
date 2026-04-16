@@ -4,7 +4,8 @@
 
 #define fp float
 
-#define NUMBER_PAR_PER_BOX 96
+// #define NUMBER_PAR_PER_BOX 10
+extern int NUMBER_PAR_PER_BOX;
 
 #define NUMBER_THREADS 128
 

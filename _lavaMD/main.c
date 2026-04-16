@@ -22,8 +22,8 @@
 #include <stdbool.h>				// (in path known to compiler)			needed by true/false
 #include <string.h>
 
-#include <time.h>
-#include <sys/time.h>
+// #include <time.h>
+// #include <sys/time.h>
 
 //======================================================================================================================================================150
 //	UTILITIES
@@ -44,20 +44,23 @@
 //======================================================================================================================================================150
 
 #ifdef USE_RISCV_VECTOR
-#include "kernel_vector.h"				// (in library path specified here)
+#include "kernel/kernel_vector.h"				// (in library path specified here)
 #else
-#include "kernel_cpu.h"				// (in library path specified here)
+#include "kernel/kernel_cpu.h"				// (in library path specified here)
 #endif
+
+#include "printf.h"
+#include "runtime.h"
 
 //#define OUTPUT
 
 //========================================================================================================================================================================================================200
 //	MAIN FUNCTION
 //========================================================================================================================================================================================================200
+extern int cores;
+extern int boxes1d;
 
-int
-main(	int argc,
-		char *argv [])
+int main(int argc, char *argv [])
 {
 
 	//======================================================================================================================================================150
@@ -67,10 +70,10 @@ main(	int argc,
 	// timer
 	long long time0;
 
-	time0 = get_time();
+	// time0 = get_time();
 
 	// timer
-	long long time1;
+	// long long time1;
 	long long time2;
 	long long time3;
 	long long time4;
@@ -90,95 +93,95 @@ main(	int argc,
 	FOUR_VECTOR* fv_cpu;
 	int nh;
 
-	time1 = get_time();
+	// time1 = get_time();
 
 	//======================================================================================================================================================150
 	//	CHECK INPUT ARGUMENTS
 	//======================================================================================================================================================150
 
 	// assing default values
-	dim_cpu.cores_arg = 1;
-	dim_cpu.boxes1d_arg = 1;
-	char *outputFile;
+	dim_cpu.cores_arg = cores;
+	dim_cpu.boxes1d_arg = boxes1d;
+	// char *outputFile;
 
 	// go through arguments
-	for(dim_cpu.cur_arg=1; dim_cpu.cur_arg<argc; dim_cpu.cur_arg++){
-		// check if -cores
-		if(strcmp(argv[dim_cpu.cur_arg], "-cores")==0){
-			// check if value provided
-			if(argc>=dim_cpu.cur_arg+1){
-				// check if value is a number
-				if(isInteger(argv[dim_cpu.cur_arg+1])==1){
-					dim_cpu.cores_arg = atoi(argv[dim_cpu.cur_arg+1]);
-					if(dim_cpu.cores_arg<0){
-						printf("ERROR: Wrong value to -cores parameter, cannot be <=0\n");
-						return 0;
-					}
-					dim_cpu.cur_arg = dim_cpu.cur_arg+1;
-				}
-				// value is not a number
-				else{
-					printf("ERROR: Value to -cores parameter in not a number\n");
-					return 0;
-				}
-			}
-			// value not provided
-			else{
-				printf("ERROR: Missing value to -cores parameter\n");
-				return 0;
-			}
-		}
-		// check if -boxes1d
-		else if(strcmp(argv[dim_cpu.cur_arg], "-boxes1d")==0){
-			// check if value provided
-			if(argc>=dim_cpu.cur_arg+1){
-				// check if value is a number
-				if(isInteger(argv[dim_cpu.cur_arg+1])==1){
-					dim_cpu.boxes1d_arg = atoi(argv[dim_cpu.cur_arg+1]);
-					if(dim_cpu.boxes1d_arg<0){
-						printf("ERROR: Wrong value to -boxes1d parameter, cannot be <=0\n");
-						return 0;
-					}
-					dim_cpu.cur_arg = dim_cpu.cur_arg+1;
-				}
-				// value is not a number
-				else{
-					printf("ERROR: Value to -boxes1d parameter in not a number\n");
-					return 0;
-				}
-			}
-			// value not provided
-			else{
-				printf("ERROR: Missing value to -boxes1d parameter\n");
-				return 0;
-			}
-		}
-		// check if -outputFile
-		else if(strcmp(argv[dim_cpu.cur_arg], "-outputFile")==0){
-			// check if value provided
-			if(argc>=dim_cpu.cur_arg+1){
-			// check if value is a number
-				outputFile = argv[dim_cpu.cur_arg+1];
-				dim_cpu.cur_arg = dim_cpu.cur_arg+1;
-			}
-			// value is not a number
-			else{
-				printf("ERROR: Missing output file name\n");
-				return 0;
-			}
-		}
-		// unknown
-		else{
-			printf("ERROR: Unknown parameter\n");
-			return 0;
-		}
-	}
+	// for(dim_cpu.cur_arg=1; dim_cpu.cur_arg<argc; dim_cpu.cur_arg++){
+	// 	// check if -cores
+	// 	if(strcmp(argv[dim_cpu.cur_arg], "-cores")==0){
+	// 		// check if value provided
+	// 		if(argc>=dim_cpu.cur_arg+1){
+	// 			// check if value is a number
+	// 			if(isInteger(argv[dim_cpu.cur_arg+1])==1){
+	// 				dim_cpu.cores_arg = atoi(argv[dim_cpu.cur_arg+1]);
+	// 				if(dim_cpu.cores_arg<0){
+	// 					printf("ERROR: Wrong value to -cores parameter, cannot be <=0\n");
+	// 					return 0;
+	// 				}
+	// 				dim_cpu.cur_arg = dim_cpu.cur_arg+1;
+	// 			}
+	// 			// value is not a number
+	// 			else{
+	// 				printf("ERROR: Value to -cores parameter in not a number\n");
+	// 				return 0;
+	// 			}
+	// 		}
+	// 		// value not provided
+	// 		else{
+	// 			printf("ERROR: Missing value to -cores parameter\n");
+	// 			return 0;
+	// 		}
+	// 	}
+	// 	// check if -boxes1d
+	// 	else if(strcmp(argv[dim_cpu.cur_arg], "-boxes1d")==0){
+	// 		// check if value provided
+	// 		if(argc>=dim_cpu.cur_arg+1){
+	// 			// check if value is a number
+	// 			if(isInteger(argv[dim_cpu.cur_arg+1])==1){
+	// 				dim_cpu.boxes1d_arg = atoi(argv[dim_cpu.cur_arg+1]);
+	// 				if(dim_cpu.boxes1d_arg<0){
+	// 					printf("ERROR: Wrong value to -boxes1d parameter, cannot be <=0\n");
+	// 					return 0;
+	// 				}
+	// 				dim_cpu.cur_arg = dim_cpu.cur_arg+1;
+	// 			}
+	// 			// value is not a number
+	// 			else{
+	// 				printf("ERROR: Value to -boxes1d parameter in not a number\n");
+	// 				return 0;
+	// 			}
+	// 		}
+	// 		// value not provided
+	// 		else{
+	// 			printf("ERROR: Missing value to -boxes1d parameter\n");
+	// 			return 0;
+	// 		}
+	// 	}
+	// 	// check if -outputFile
+	// 	else if(strcmp(argv[dim_cpu.cur_arg], "-outputFile")==0){
+	// 		// check if value provided
+	// 		if(argc>=dim_cpu.cur_arg+1){
+	// 		// check if value is a number
+	// 			outputFile = argv[dim_cpu.cur_arg+1];
+	// 			dim_cpu.cur_arg = dim_cpu.cur_arg+1;
+	// 		}
+	// 		// value is not a number
+	// 		else{
+	// 			printf("ERROR: Missing output file name\n");
+	// 			return 0;
+	// 		}
+	// 	}
+	// 	// unknown
+	// 	else{
+	// 		printf("ERROR: Unknown parameter\n");
+	// 		return 0;
+	// 	}
+	// }
 
 	// Print configuration
 	printf("Configuration used: cores = %d, boxes1d = %d\n", dim_cpu.cores_arg, dim_cpu.boxes1d_arg);
-	printf("outputfile = %s \n", outputFile);
+	// printf("outputfile = %s \n", outputFile);
 
-	time2 = get_time();
+	// time2 = get_time();
 
 	//======================================================================================================================================================150
 	//	INPUTS
@@ -186,7 +189,7 @@ main(	int argc,
 
 	par_cpu.alpha = 0.5;
 
-	time3 = get_time();
+	// time3 = get_time();
 
 	//======================================================================================================================================================150
 	//	DIMENSIONS
@@ -203,7 +206,7 @@ main(	int argc,
 	// box array
 	dim_cpu.box_mem = dim_cpu.number_boxes * sizeof(box_str);
 
-	time4 = get_time();
+	// time4 = get_time();
 
 	//======================================================================================================================================================150
 	//	SYSTEM MEMORY
@@ -214,7 +217,7 @@ main(	int argc,
 	//====================================================================================================100
 
 	// allocate boxes
-	box_cpu = (box_str*)malloc(dim_cpu.box_mem);
+	box_cpu = (box_str*)baremetal_malloc(dim_cpu.box_mem);
 
 	// initialize number of home boxes
 	nh = 0;
@@ -277,10 +280,10 @@ main(	int argc,
 	//====================================================================================================100
 
 	// random generator seed set to random value - time in this case
-	srand(time(NULL));
+	// srand(get_timer());
 
 	// input (distances)
-	rv_cpu = (FOUR_VECTOR*)malloc(dim_cpu.space_mem);
+	rv_cpu = (FOUR_VECTOR*)baremetal_malloc(dim_cpu.space_mem);
 	for(i=0; i<dim_cpu.space_elem; i=i+1){
 		rv_cpu[i].v = (rand()%10 + 1) / 10.0;			// get a number in the range 0.1 - 1.0
 		rv_cpu[i].x = (rand()%10 + 1) / 10.0;			// get a number in the range 0.1 - 1.0
@@ -289,13 +292,13 @@ main(	int argc,
 	}
 
 	// input (charge)
-	qv_cpu = (fp*)malloc(dim_cpu.space_mem2);
+	qv_cpu = (fp*)baremetal_malloc(dim_cpu.space_mem2);
 	for(i=0; i<dim_cpu.space_elem; i=i+1){
 		qv_cpu[i] = (rand()%10 + 1) / 10.0;			// get a number in the range 0.1 - 1.0
 	}
 
 	// output (forces)
-	fv_cpu = (FOUR_VECTOR*)malloc(dim_cpu.space_mem);
+	fv_cpu = (FOUR_VECTOR*)baremetal_malloc(dim_cpu.space_mem);
 	for(i=0; i<dim_cpu.space_elem; i=i+1){
 		fv_cpu[i].v = 0;								// set to 0, because kernels keeps adding to initial value
 		fv_cpu[i].x = 0;								// set to 0, because kernels keeps adding to initial value
@@ -303,7 +306,7 @@ main(	int argc,
 		fv_cpu[i].z = 0;								// set to 0, because kernels keeps adding to initial value
 	}
 
-	time5 = get_time();
+	// time5 = get_time();
 
 	//======================================================================================================================================================150
 	//	KERNEL
@@ -318,12 +321,16 @@ main(	int argc,
     //instr1 = get_inst_count();
     //cycles1 = get_cycles_count();
 
+	start_timer();
 	kernel_cpu(	par_cpu,
 				dim_cpu,
 				box_cpu,
 				rv_cpu,
 				qv_cpu,
 				fv_cpu);
+	stop_timer();
+
+	printf("Finished kernel [sw-cycles]=%ld\n", get_timer());
 
 	// End instruction and cycles count of the region of interest
     //instr2 = get_inst_count();
@@ -332,20 +339,20 @@ main(	int argc,
     //printf("-CSR   NUMBER OF EXEC CYCLES :%lu\n", cycles2 - cycles1);
     //printf("-CSR   NUMBER OF INSTRUCTIONS EXECUTED :%lu\n", instr2 - instr1);
 
-	time6 = get_time();
+	// time6 = get_time();
 
 	//======================================================================================================================================================150
 	//	SYSTEM MEMORY DEALLOCATION
 	//======================================================================================================================================================150
 
 	// dump results
-    FILE *file;
+    // FILE *file;
 
-	file = fopen(outputFile, "w");
-	if(file == NULL) {
-      printf("ERROR: Unable to open file `%s'.\n", outputFile);
-      exit(1);
-    }
+	// file = fopen(outputFile, "w");
+	// if(file == NULL) {
+    //   printf("ERROR: Unable to open file `%s'.\n", outputFile);
+    //   exit(1);
+    // }
 	//if (time6 > 0) {
 	//	printf("end\n");
 	//	return 0;
@@ -353,19 +360,18 @@ main(	int argc,
 
 	//printf("\n\n\n\n");
 	for(i=0; i<dim_cpu.space_elem; i=i+1){
-        	//printf("%f, %f, %f, %f\n", fv_cpu[i].v, fv_cpu[i].x, fv_cpu[i].y, fv_cpu[i].z);
-        	fprintf(file, "%f, %f, %f, %f\n", fv_cpu[i].v, fv_cpu[i].x, fv_cpu[i].y, fv_cpu[i].z);
+        printf("%f, %f, %f, %f\n", fv_cpu[i].v, fv_cpu[i].x, fv_cpu[i].y, fv_cpu[i].z);
 	}
-	fclose(file);
+	// fclose(file);
 
 
 
-	free(rv_cpu);
-	free(qv_cpu);
-	free(fv_cpu);
-	free(box_cpu);
+	// free(rv_cpu);
+	// free(qv_cpu);
+	// free(fv_cpu);
+	// free(box_cpu);
 
-	time7 = get_time();
+	// time7 = get_time();
 
 	//======================================================================================================================================================150
 	//	DISPLAY TIMING
