@@ -101,6 +101,8 @@ extern int CHUNKSIZE;
 extern int CLUSTERSIZE;
 extern float block[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS)));
 
+// #define PRINT_RESULT
+
 #ifdef TBB_VERSION
 tbb::cache_aligned_allocator<float> memoryFloat;
 tbb::cache_aligned_allocator<Point> memoryPoint;
@@ -785,7 +787,7 @@ static double hizs[nproc];
 float pkmedian(Points *points, long kmin, long kmax, long* kfinal,
          int pid, pthread_barrier_t* barrier )
 {
-  printf("pkmedian pthread %d begin\n",pid);
+  // printf("pkmedian pthread %d begin\n",pid);
   
   start_timer();
   
@@ -882,6 +884,7 @@ float pkmedian(Points *points, long kmin, long kmax, long* kfinal,
 
   stop_timer();
   printf("pspeedy [sw-cycles]: %ld cnt: %d\n", get_timer(), cnt_dist);
+  cnt_dist=0;
 
   start_timer();
   while(1) {
@@ -923,7 +926,14 @@ float pkmedian(Points *points, long kmin, long kmax, long* kfinal,
 #endif
   }
   stop_timer();
-  printf("pFL [sw-cycles]: %ld cnt:%d \n", get_timer(), cnt_dist);
+
+  int64_t cycles = get_timer();
+  int64_t total_ops = cnt_dist * DIM * 2; // each distance computation involves 2 floating point ops (sub and mac)
+  int64_t ops_per_cycle = 2 * NR_LANES * NR_CLUSTERS; // 2x 32-bit ops / lane
+  int64_t theoretical_cycles = (total_ops + ops_per_cycle - 1) / ops_per_cycle; // ceiling division
+  float utilization = 100.0 * (float) theoretical_cycles / (float)cycles;
+  printf("pFL [sw-cycles]: %ld cnt:%d util:%f%%\n", cycles, cnt_dist, utilization);
+  cnt_dist=0;
 
   //clean up...
   if( pid==0 ) {
@@ -1181,8 +1191,10 @@ void streamCluster(long kmin, long kmax, int dim,
   contcenters(&centers);
   stop_timer();
   printf("cont centers [sw-cycles]: %ld cnt:%d\n", get_timer(), cnt_dist);
-  
+
+#ifdef PRINT_RESULT
   outcenterIDs( &centers, centerIDs);
+#endif
 }
 
 int main()

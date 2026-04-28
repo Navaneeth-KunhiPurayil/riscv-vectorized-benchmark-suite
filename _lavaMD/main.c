@@ -52,7 +52,7 @@
 #include "printf.h"
 #include "runtime.h"
 
-//#define OUTPUT
+// #define PRINT_RESULT
 
 //========================================================================================================================================================================================================200
 //	MAIN FUNCTION
@@ -178,7 +178,7 @@ int main(int argc, char *argv [])
 	// }
 
 	// Print configuration
-	printf("Configuration used: cores = %d, boxes1d = %d\n", dim_cpu.cores_arg, dim_cpu.boxes1d_arg);
+	printf("Configuration used: cores = %d, boxes1d = %d, NUMBER_PAR_PER_BOX = %d\n", dim_cpu.cores_arg, dim_cpu.boxes1d_arg, NUMBER_PAR_PER_BOX);
 	// printf("outputfile = %s \n", outputFile);
 
 	// time2 = get_time();
@@ -330,7 +330,17 @@ int main(int argc, char *argv [])
 				fv_cpu);
 	stop_timer();
 
-	printf("Finished kernel [sw-cycles]=%ld\n", get_timer());
+	int64_t cycles = get_timer();
+#ifdef MEASURE_PERFORMANCE
+	int64_t total_ops = 16 * NUMBER_PAR_PER_BOX * 36; // 36 vec. insn. within inner most loop
+#else
+	int64_t total_ops = NUMBER_PAR_PER_BOX * NUMBER_PAR_PER_BOX * 36; // 36 vec. insn. within inner most loop
+#endif
+	int64_t ops_per_cycle = 2 * NR_LANES * NR_CLUSTERS; // 2x 32-bit ops per lane
+	int64_t theoretical_cycles = (total_ops + ops_per_cycle - 1) / ops_per_cycle; // Ceiling division
+	float utilization = 100.0 * (float)theoretical_cycles/(float)cycles;
+
+	printf("Finished kernel [sw-cycles]=%ld util:%f%%\n", cycles, utilization);
 
 	// End instruction and cycles count of the region of interest
     //instr2 = get_inst_count();
@@ -358,13 +368,11 @@ int main(int argc, char *argv [])
 	//	return 0;
 	//}
 
-	//printf("\n\n\n\n");
+#ifdef PRINT_RESULT
 	for(i=0; i<dim_cpu.space_elem; i=i+1){
         printf("%f, %f, %f, %f\n", fv_cpu[i].v, fv_cpu[i].x, fv_cpu[i].y, fv_cpu[i].z);
 	}
-	// fclose(file);
-
-
+#endif
 
 	// free(rv_cpu);
 	// free(qv_cpu);

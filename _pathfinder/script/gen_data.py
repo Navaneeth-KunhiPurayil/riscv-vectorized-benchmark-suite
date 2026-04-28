@@ -32,7 +32,7 @@ def emit(name, array, alignment='8'):
       s += "%02x" % bs[i+3-n]
     print("    .word 0x%s" % s)
 
-def read_pathfinder_input(file_path):
+def read_pathfinder_input(file_path, cols):
     """Read pathfinder input file with matrix dimensions, data, and reference."""
     wall = []
     reference = []
@@ -43,15 +43,15 @@ def read_pathfinder_input(file_path):
         # First line contains dimensions: rows cols
         dims = lines[0].strip().split()
         rows = int(dims[0])
-        cols = int(dims[1])
+        # cols = int(dims[1])
         
         # Read the matrix data (rows lines of cols values each)
         for line in lines[1:rows+1]:
             parts = line.strip().split()
             if len(parts) == 0:
                 continue
-            # Convert to integers and add to wall matrix
-            wall.extend([int(x) for x in parts])
+            # Convert to integers and add to wall matrix (only first cols values)
+            wall.extend([int(x) for x in parts[:cols]])
         
         # Read the reference data (after empty line)
         if len(lines) > rows + 2:
@@ -60,12 +60,14 @@ def read_pathfinder_input(file_path):
     
     return rows, cols, wall, reference
 
-if len(sys.argv) > 1:
+if len(sys.argv) > 2:
   file_path = sys.argv[1]
+  cols = int(sys.argv[2])
 else:
   file_path = "input/data_small.in"
+  cols = 16
 
-rows, cols, wall_data, reference_data = read_pathfinder_input(file_path)
+rows, cols, wall_data, reference_data = read_pathfinder_input(file_path, cols)
 
 # Create the file
 print(".section .data,\"aw\",@progbits")

@@ -109,7 +109,7 @@ void run_vector()
 {
     int *dst;
 
-    printf("NUMBER OF RUNS: %d L=%d C=%d\n",NUM_RUNS, NR_LANES, NR_CLUSTERS);
+    printf("NUMBER OF RUNS: %d rows: %d cols: %d L=%d C=%d\n",NUM_RUNS, rows, cols, NR_LANES, NR_CLUSTERS);
     
     start_timer();
 
@@ -187,7 +187,11 @@ void run_vector()
         printf("Verification failed!\n");
     } else {
         int64_t cycles = get_timer();
-        printf("Verification passed! [sw-cycles]=%ld\n", cycles);
+        int64_t total_ops = (int64_t)(rows-1)*cols*3; // 3 operations per element: 2x MIN + 1x ADD
+        int64_t ops_per_cycle = 2 * NR_LANES * NR_CLUSTERS; // 2x 32-bit ops per lane
+        int64_t theoretical_cycles = (total_ops + ops_per_cycle - 1) / ops_per_cycle; // Ceiling division
+        float utilization = 100.0 * (float)theoretical_cycles/(float)cycles;
+        printf("Verification passed!\n[sw-cycles]=%ld, util:%f%%\n", cycles, utilization);
     }
 
 #ifdef RESULT_PRINT

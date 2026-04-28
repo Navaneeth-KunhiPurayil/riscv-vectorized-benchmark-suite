@@ -66,6 +66,12 @@ int main(){
         }
         printf("Verification pass [sw-cycles] = %ld\n", get_timer());
     }
+    int64_t cycles = get_timer();
+    int64_t total_ops = NZ; // 1 MAC op per non-zero element
+    int64_t ops_per_cycle = NR_LANES * NR_CLUSTERS; // 1x 64-bit MAC ops per lane
+    int64_t theoretical_cycles = (total_ops + ops_per_cycle - 1) / ops_per_cycle; // Ceiling division
+    float utilization = 100.0 * (float)theoretical_cycles / (float)cycles;
+    printf("SpMV execution took [sw-cycles]:%ld util:%f%%\n", cycles, utilization);
 
     printf ("done\n");
 

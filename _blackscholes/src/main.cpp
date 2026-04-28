@@ -602,7 +602,11 @@ int main (int argc, char **argv)
     start_timer();
     bs_thread(&tid);
     stop_timer();
-    printf("Time: %ld cycles\n", get_timer());
+
+    int64_t cycles = get_timer();
+
+    float utilization = 100.0 * numOptions * 133 / (2 * NR_LANES * NR_CLUSTERS * cycles);
+    printf("[sw-cycles]: %ld util:%f%%\n", cycles, utilization);
 #endif //ENABLE_TBB
 #endif //ENABLE_OPENMP
 #endif //ENABLE_THREADS

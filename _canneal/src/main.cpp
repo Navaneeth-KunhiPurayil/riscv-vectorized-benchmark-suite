@@ -59,7 +59,7 @@
 // Static compile-time configuration for CANNEAL
 #define USE_COMPILED_NETLIST
 #define CANNEAL_NUM_THREADS 1
-#define CANNEAL_SWAPS_PER_TEMP 10
+#define CANNEAL_SWAPS_PER_TEMP 100
 #define CANNEAL_START_TEMP 2000
 #define CANNEAL_NUM_TEMP_STEPS 10  // -1 means run until convergence
 
@@ -120,7 +120,6 @@ int main (int argc, char **argv) {
 	start_timer();
 	a_thread.Run();
 	stop_timer();
-	printf("Total execution time [sw-cycles]: %ld\n", get_timer());
 #endif
 
 #ifdef ENABLE_PARSEC_HOOKS
@@ -129,6 +128,9 @@ int main (int argc, char **argv) {
 
 #ifdef USE_RISCV_VECTOR
 	extern unsigned long swap_cost_vector_calls;
+	int64_t cycles = get_timer();
+	int64_t total_ops = 
+	printf("Total execution time [sw-cycles]: %ld\n", get_timer());
 	printf("swap_cost_vector calls: %lu\n", swap_cost_vector_calls);
 #endif
 

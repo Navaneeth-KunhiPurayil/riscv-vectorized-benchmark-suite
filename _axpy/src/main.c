@@ -49,7 +49,9 @@ int main()
 #endif
 
     int64_t cycles = get_timer();
-    printf ("[sw-cycles] %ld\n", cycles);
+
+    float utilization = 100.0 * n / (NR_LANES * NR_CLUSTERS * cycles);
+    printf ("[sw-cycles]: %ld util:%f%%\n", cycles, utilization);
 
     test_result(dy, reference, n);
 

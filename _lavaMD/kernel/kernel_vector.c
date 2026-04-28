@@ -180,8 +180,11 @@ void  kernel_cpu(	par_str par,
 			_MMR_f32 xfA_v, xfA_x, xfA_y, xfA_z;
 			_MMR_f32 xfA_1_v, xfA_1_x, xfA_1_y, xfA_1_z;
 
+#ifdef MEASURE_PERFORMANCE
+			for (i=0; i<16; i=i+1){
+#else
 			for (i=0; i<NUMBER_PAR_PER_BOX; i=i+1){
-
+#endif
 				unsigned long int gvl = _MMR_VSETVL_E32M1(NUMBER_PAR_PER_BOX);
 
 				xfA_v = _MM_SET_f32(0.0f,gvl);
