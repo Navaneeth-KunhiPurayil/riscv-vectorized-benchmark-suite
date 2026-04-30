@@ -70,7 +70,7 @@ using namespace tbb;
 
 #define NUM_RUNS  1
 #define TOLERANCE 1e-1
-// #define ERR_CHK
+#define ERR_CHK
 // #define PRINT_RESULTS
 
 typedef struct OptionData_ {
@@ -435,8 +435,8 @@ int bs_thread(void *tid_ptr) {
     int i, j, k;
     fptype priceDelta;
     int tid = *(int *)tid_ptr;
-    int start = tid * (numOptions / nThreads);
-    int end = start + (numOptions / nThreads);
+    int start = tid * (numOptions / NR_CORES);
+    int end = start + (numOptions / NR_CORES);
 
     unsigned long int gvl = __riscv_vsetvl_e32m1(end);
 
@@ -456,19 +456,6 @@ int bs_thread(void *tid_ptr) {
             gvl = __riscv_vsetvl_e32m1(end-i);
             BlkSchlsEqEuroNoDiv_vector( &(prices[i]), gvl, &(sptprice[i]), &(strike[i]),
                                 &(rate[i]), &(volatility[i]), &(otime[i]), &(otype[i])/*,&(otype_d[i])*/, 0,gvl);
-            //for (k=0; k<gvl; k++) {
-            //  prices[i+k] = price[k];
-            //}
-#ifdef ERR_CHK
-            for (k=0; k<gvl; k++) {
-                priceDelta = DGrefval[i+k] - prices[i+k];
-                if (fabs(priceDelta) >= TOLERANCE) {
-                    printf("Error on %d. Computed=%.5f, Ref=%.5f, Delta=%.5f\n",
-                           i + k, prices[i+k], DGrefval[i+k], priceDelta);
-                    numError ++;
-                }
-            }
-#endif
         }
     }
 
@@ -483,8 +470,8 @@ int bs_thread(void *tid_ptr) {
       fptype price;
       fptype priceDelta;
       int tid = *(int *)tid_ptr;
-      int start = tid * (numOptions / nThreads);
-      int end = start + (numOptions / nThreads);
+      int start = tid * (numOptions / NR_CORES);
+      int end = start + (numOptions / NR_CORES);
 
 for (j=0; j<NUM_RUNS; j++) {
 #ifdef ENABLE_OPENMP
@@ -500,15 +487,6 @@ for (j=0; j<NUM_RUNS; j++) {
                                          rate[i], volatility[i], otime[i],
                                          otype[i], 0);
             prices[i] = price;
-
-#ifdef ERR_CHK
-            priceDelta = DGrefval[i] - price;
-            if( fabs(priceDelta) >= 1e-4 ){
-        printf("Error on %d. Computed=%.5f, Ref=%.5f, Delta=%.5f\n",
-         i, price, DGrefval[i], priceDelta);
-        numError ++;
-            }
-#endif
     }
   }
 
@@ -518,43 +496,37 @@ for (j=0; j<NUM_RUNS; j++) {
 #endif // USE_RISCV_VECTOR
 #endif //ENABLE_TBB
 
-int main (int argc, char **argv)
+int main (int hart_id)
 {
-    printf("RISC-V Vectorized Black-Scholes\n");
 
-    int i;
+    if (hart_id == 0) {
+        printf("RISC-V Vectorized Black-Scholes lanes=%d clusters=%d cores=%d\n", NR_LANES, NR_CLUSTERS, NR_CORES);
 
 #ifdef PARSEC_VERSION
 #define __PARSEC_STRING(x) #x
 #define __PARSEC_XSTRING(x) __PARSEC_STRING(x)
         printf("PARSEC Benchmark Suite Version "__PARSEC_XSTRING(PARSEC_VERSION)"\n");
-  fflush(NULL);
+        fflush(NULL);
 #else
         printf("PARSEC Benchmark Suite\n");
-  fflush(NULL);
+        fflush(NULL);
 #endif //PARSEC_VERSION
 #ifdef ENABLE_PARSEC_HOOKS
-   __parsec_bench_begin(__parsec_blackscholes);
+        __parsec_bench_begin(__parsec_blackscholes);
 #endif
 
 
 #if !defined(ENABLE_THREADS) && !defined(ENABLE_OPENMP) && !defined(ENABLE_TBB)
-    if(nThreads != 1) {
-        printf("Error: <nthreads> must be 1 (serial version)\n");
-        exit(1);
+        if(nThreads != 1) {
+            printf("Error: <nthreads> must be 1 (serial version)\n");
+            exit(1);
+        }
+#endif
+
+        printf("Num of Options: %d\n", numOptions);
+        printf("Num of Runs: %d\n", NUM_RUNS);
+        printf("Size of data: %lu\n", numOptions * (sizeof(OptionData) + sizeof(int)));
     }
-#endif
-
-#ifdef ENABLE_THREADS
-    MAIN_INITENV(,8000000,nThreads);
-#endif
-    printf("Num of Options: %d\n", numOptions);
-    printf("Num of Runs: %d\n", NUM_RUNS);
-
-#define PAD 256
-#define LINESIZE 64
-
-    printf("Size of data: %lu\n", numOptions * (sizeof(OptionData) + sizeof(int)));
 
 #ifdef ENABLE_PARSEC_HOOKS
     __parsec_roi_begin();
@@ -567,7 +539,7 @@ int main (int argc, char **argv)
     threads = (HANDLE *) malloc (nThreads * sizeof(HANDLE));
     nums = (int *) malloc (nThreads * sizeof(int));
 
-    for(i=0; i<nThreads; i++) {
+    for(int i=0; i<nThreads; i++) {
         nums[i] = i;
         threads[i] = CreateThread(0, 0, bs_thread, &nums[i], 0, 0);
     }
@@ -577,7 +549,7 @@ int main (int argc, char **argv)
 #else
     int tids[nThreads] = {0};
 
-    for(i=0; i<nThreads; i++) {
+    for(int i=0; i<nThreads; i++) {
         tids[i]=i;
         CREATE_WITH_ARG(bs_thread, &tids[i]);
     }
@@ -597,16 +569,40 @@ int main (int argc, char **argv)
     int tid=0;
     bs_thread(&tid);
 #else //ENABLE_TBB
-    //serial version
-    int tid=0;
-    start_timer();
+
+    int tid=hart_id;
+    if (hart_id == 0) 
+        start_timer();
+    
+    // Call blackscholes threads
     bs_thread(&tid);
-    stop_timer();
 
-    int64_t cycles = get_timer();
+#if NR_CORES > 1
+    sync_barrier();
+#endif
+    
+    if (hart_id == 0) {
+        stop_timer();
+        int64_t cycles = get_timer();
+        float utilization = 100.0 * numOptions * 133 / (2 * NR_LANES * NR_CLUSTERS * NR_CORES * cycles);
+        printf("[sw-cycles]: %ld util:%f%%\n", cycles, utilization);
 
-    float utilization = 100.0 * numOptions * 133 / (2 * NR_LANES * NR_CLUSTERS * cycles);
-    printf("[sw-cycles]: %ld util:%f%%\n", cycles, utilization);
+        // Result check
+        for (int k=0; k<numOptions; k++) {
+            fptype priceDelta = DGrefval[k] - prices[k];
+            if (fabs(priceDelta) >= TOLERANCE) {
+                printf("Error on %d. Computed=%.5f, Ref=%.5f, Delta=%.5f\n",
+                    k, prices[k], DGrefval[k], priceDelta);
+                numError ++;
+                return -1;
+            }
+        }
+    }
+
+#if NR_CORES > 1
+    sync_barrier();
+#endif
+
 #endif //ENABLE_TBB
 #endif //ENABLE_OPENMP
 #endif //ENABLE_THREADS
@@ -617,17 +613,19 @@ int main (int argc, char **argv)
 
 #ifdef PRINT_RESULTS
     // Print results
-    for(i=0; i<numOptions; i++) {
-        printf("Option:%d Price:%f\n", i, prices[i]);
+    if (hart_id == 0) {
+        for(int i=0; i<numOptions; i++) {
+            printf("Option:%d Price:%f\n", i, prices[i]);
+        }
     }
-#endif
-
-#ifdef ERR_CHK
-    printf("Num Errors: %d\n", numError);
 #endif
 
 #ifdef ENABLE_PARSEC_HOOKS
     __parsec_bench_end();
+#endif
+
+#if NR_CORES > 1
+    sync_barrier();
 #endif
 
     return 0;
