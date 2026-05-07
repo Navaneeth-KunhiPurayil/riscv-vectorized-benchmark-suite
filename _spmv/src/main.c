@@ -41,39 +41,57 @@ extern double x[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS)));
 extern double y[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS)));
 extern double verif[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS)));
 
-int main(){
+int main(int hart_id){
 
-    bool verification = true;
+    if (hart_id == 0) {
+        printf("Running SpMV with M=%ld, N=%ld, NNZ=%ld L=%d C=%d cores=%d\n", M, N, NZ, NR_LANES, NR_CLUSTERS, NR_CORES);
+    }
 
-    printf("Running SpMV with M=%ld, N=%ld, NNZ=%ld L=%d C=%d\n", M, N, NZ, NR_LANES, NR_CLUSTERS);
+#if NR_CORES > 1
+    sync_barrier(); // all cores ready
+#endif
+
+    // Partition rows across cores; last core absorbs any remainder
+    size_t M_per_core = M / NR_CORES;
+    size_t M_start     = (size_t)hart_id * M_per_core;
+    size_t M_end       = (hart_id == NR_CORES - 1) ? M : M_start + M_per_core;
+    size_t M_rows      = M_end - M_start;
+
+    if (hart_id == 0)
+        start_timer();
 
 #ifdef USE_RISCV_VECTOR
-    start_timer();
-    spmv_intrinsics(M, a, ia, ja, x, y);
-    stop_timer();
+    spmv_intrinsics(M_rows, a, &ia[M_start], ja, x, &y[M_start]);
 #else // !USE_RISCV_VECTOR
-    spmv_serial(M, a, ia, ja, x, y);
+    spmv_serial(M_rows, a, &ia[M_start], ja, x, &y[M_start]);
 #endif
     asm volatile ("fence");
 
-    if(verification == true){
+#if NR_CORES > 1
+    sync_barrier(); // all cores done writing y[]
+#endif
+    if (hart_id == 0)
+        stop_timer();
+
+    if (hart_id == 0) {
         for(size_t i=0; i < M ; i++){
             if (fabs(y[i] - verif[i]) > TOLERANCE) {
                 printf("Verification fail \n");
-                printf("%.17lf  -  %.17lf \n",y[i],verif[i]);
+                printf("idx: %ld %.17lf  -  %.17lf \n", i, y[i], verif[i]);
                 return i+1;
             }
         }
-        printf("Verification pass [sw-cycles] = %ld\n", get_timer());
+        int64_t cycles = get_timer();
+        int64_t total_ops = NZ; // 1 MAC op per non-zero element
+        int64_t ops_per_cycle = NR_LANES * NR_CLUSTERS * NR_CORES; // all cores contribute
+        int64_t theoretical_cycles = (total_ops + ops_per_cycle - 1) / ops_per_cycle; // Ceiling division
+        float utilization = 100.0 * (float)theoretical_cycles / (float)cycles;
+        printf("Verification pass\nSpMV execution took [sw-cycles]:%ld util:%f%%\n", cycles, utilization);
     }
-    int64_t cycles = get_timer();
-    int64_t total_ops = NZ; // 1 MAC op per non-zero element
-    int64_t ops_per_cycle = NR_LANES * NR_CLUSTERS; // 1x 64-bit MAC ops per lane
-    int64_t theoretical_cycles = (total_ops + ops_per_cycle - 1) / ops_per_cycle; // Ceiling division
-    float utilization = 100.0 * (float)theoretical_cycles / (float)cycles;
-    printf("SpMV execution took [sw-cycles]:%ld util:%f%%\n", cycles, utilization);
 
-    printf ("done\n");
+#if NR_CORES > 1
+    sync_barrier();
+#endif
 
     return 0;
 }
