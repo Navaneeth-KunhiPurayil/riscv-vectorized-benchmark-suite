@@ -98,19 +98,19 @@ void * worker(void *arg){
   FTYPE pdSwaptionPrice[2];
 
   int beg, end, chunksize;
-  if (tid < (nSwaptions % nThreads)) {
-    chunksize = nSwaptions/nThreads + 1;
+  if (tid < (nSwaptions % NR_CORES)) {
+    chunksize = nSwaptions/NR_CORES + 1;
     beg = tid * chunksize;
     end = (tid+1)*chunksize;
   } else {
-    chunksize = nSwaptions/nThreads;
-    int offsetThread = nSwaptions % nThreads;
+    chunksize = nSwaptions/NR_CORES;
+    int offsetThread = nSwaptions % NR_CORES;
     int offset = offsetThread * (chunksize + 1);
     beg = offset + (tid - offsetThread) * chunksize;
     end = offset + (tid - offsetThread + 1) * chunksize;
   }
 
-  if(tid == nThreads -1 )
+  if(tid == NR_CORES -1 )
     end = nSwaptions;
 
   int BLOCK_SIZE_AUX;
@@ -161,12 +161,15 @@ void print_usage(char *name) {
 //For instance, if X/Y = 0.999 then (int) (X/Y) will equal 0 and not 1 (as (int) rounds down).
 //Adding 0.5 ensures that this does not happen. Therefore we use (int) (X/Y + 0.5); instead of (int) (X/Y);
 
-int main(int argc, char *argv[])
+int main(int hart_id)
 {
-	int iSuccess = 0;
-	int i,j;
 
-	FTYPE **factors=NULL;
+  int iSuccess = 0;
+
+if (hart_id ==0) {
+  int i,j;
+
+  FTYPE **factors=NULL;
 
 #ifdef PARSEC_VERSION
 #define __PARSEC_STRING(x) #x
@@ -181,17 +184,12 @@ int main(int argc, char *argv[])
 	__parsec_bench_begin(__parsec_swaptions);
 #endif
 
-  if(argc == 1) {
-    print_usage(argv[0]);
-    exit(1);
-  }
-
   if(nSwaptions < nThreads) {
     printf("Error: Fewer swaptions than threads.\n");
     exit(1);
   }
 
-  printf("Number of Simulations: %d,  Number of threads: %d Number of swaptions: %d\n", NUM_TRIALS, nThreads, nSwaptions);
+  printf("Number of Simulations: %d,  Number of cores: %d Number of swaptions: %d\n", NUM_TRIALS, NR_CORES, nSwaptions);
   swaption_seed = (long)(2147483647L * RanUnif(&seed));
 
 #ifdef ENABLE_THREADS
@@ -293,6 +291,7 @@ int main(int argc, char *argv[])
             for(j=0;j<=swaptions[i].iN-2;++j)
                   swaptions[i].ppdFactors[k][j] = factors[k][j];
   }
+}
 
 	// **********Calling the Swaption Pricing Routine*****************
 #ifdef ENABLE_PARSEC_HOOKS
@@ -320,25 +319,41 @@ int main(int argc, char *argv[])
 #endif // TBB_VERSION
 
 #else
-	int threadID=0;
-  start_timer();
-	worker(&threadID);
-  stop_timer();
+
+#if NR_CORES > 1
+  sync_barrier();
+#endif 
+
+	int threadID=hart_id;
+  if (hart_id == 0)
+    start_timer();
+	
+  worker(&threadID);
+
+#if NR_CORES > 1
+  sync_barrier();
+#endif
+
 #endif //ENABLE_THREADS
-  int64_t cycles = get_timer();
-  int64_t total_ops = 3629 * nSwaptions * NUM_TRIALS; // 3629 is the number of vec. instructions executed
-  int64_t ops_per_lane = NR_LANES * NR_CLUSTERS; // 1x 64-bit op per lane
-  int64_t theoretical_cycles = (total_ops + ops_per_lane - 1) / ops_per_lane; // Ceiling division
-  float utilization = 100.0 * (float)theoretical_cycles/(float)cycles;
-  printf("\n\nSwaption Pricing Routine took [sw-cycles]=%ld util:%f%%\n", cycles, utilization);
+
+  if (hart_id == 0) {
+    stop_timer();
+    int64_t cycles = get_timer();
+    int64_t total_ops = 3629 * nSwaptions * NUM_TRIALS; // 3629 is the number of vec. instructions executed
+    int64_t ops_per_lane = NR_LANES * NR_CLUSTERS * NR_CORES; // 1x 64-bit op per lane
+    int64_t theoretical_cycles = (total_ops + ops_per_lane - 1) / ops_per_lane; // Ceiling division
+    float utilization = 100.0 * (float)theoretical_cycles/(float)cycles;
+    printf("\n\nSwaption Pricing Routine took [sw-cycles]=%ld util:%f%%\n", cycles, utilization);
+  
 
 #ifdef ENABLE_PARSEC_HOOKS
 	__parsec_roi_end();
 #endif
 
-  for (i = 0; i < nSwaptions; i++) {
-    printf("Swaption %d: [SwaptionPrice: %.10lf StdError: %.10lf] \n",
-              i, swaptions[i].dSimSwaptionMeanPrice, swaptions[i].dSimSwaptionStdError);
+    for (int i = 0; i < nSwaptions; i++) {
+      printf("Swaption %d: [SwaptionPrice: %.10lf StdError: %.10lf] \n",
+                i, swaptions[i].dSimSwaptionMeanPrice, swaptions[i].dSimSwaptionStdError);
+    }
   }
 
 #ifdef TBB_VERSION
@@ -350,6 +365,10 @@ int main(int argc, char *argv[])
 
 #ifdef ENABLE_PARSEC_HOOKS
 	__parsec_bench_end();
+#endif
+
+#if NR_CORES > 1
+  sync_barrier();
 #endif
 
 	return iSuccess;
