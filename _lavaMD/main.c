@@ -60,7 +60,7 @@
 extern int cores;
 extern int boxes1d;
 
-int main(int argc, char *argv [])
+int main(int hart_id)
 {
 
 	//======================================================================================================================================================150
@@ -85,15 +85,21 @@ int main(int argc, char *argv [])
 	int i, j, k, l, m, n;
 
 	// system memory
-	par_str par_cpu;
-	dim_str dim_cpu;
-	box_str* box_cpu;
-	FOUR_VECTOR* rv_cpu;
-	fp* qv_cpu;
-	FOUR_VECTOR* fv_cpu;
+	static par_str par_cpu;
+	static dim_str dim_cpu;
+	static box_str* box_cpu;
+	static FOUR_VECTOR* rv_cpu;
+	static fp* qv_cpu;
+	static FOUR_VECTOR* fv_cpu;
 	int nh;
 
+	// Per-core kernel arguments (set up by core 0)
+	static dim_str per_core_dim[NR_CORES];
+	static box_str* per_core_box[NR_CORES];
+
 	// time1 = get_time();
+
+	if (hart_id == 0) {
 
 	//======================================================================================================================================================150
 	//	CHECK INPUT ARGUMENTS
@@ -309,6 +315,41 @@ int main(int argc, char *argv [])
 	// time5 = get_time();
 
 	//======================================================================================================================================================150
+	//	PER-CORE BOX PARTITIONING
+	//======================================================================================================================================================150
+
+	{
+		long boxes_per_core = (dim_cpu.number_boxes + NR_CORES - 1) / NR_CORES;
+		for (int c = 0; c < NR_CORES; c++) {
+			long start_box = (long)c * boxes_per_core;
+			long end_box   = start_box + boxes_per_core;
+			if (end_box > dim_cpu.number_boxes)
+				end_box = dim_cpu.number_boxes;
+			long my_num_boxes = end_box - start_box;
+
+			// Allocate a full-size copy of box_cpu for this core.
+			// We pass (box_c + start_box) to kernel_cpu so that:
+			//   home box:  box_ptr[l]       = box_c[start_box + l]         (correct)
+			//   neighbor:  box_ptr[relative] = box_c[start_box + relative]  (correct)
+			// where relative = absolute - start_box, via pointer arithmetic.
+			box_str* box_c = (box_str*)baremetal_malloc(dim_cpu.number_boxes * sizeof(box_str));
+			memcpy(box_c, box_cpu, dim_cpu.number_boxes * sizeof(box_str));
+
+			// Remap nei.number in this core's home boxes from absolute to relative.
+			for (long b = 0; b < my_num_boxes; b++) {
+				box_str* hb = &box_c[start_box + b];
+				for (int ni = 0; ni < hb->nn; ni++) {
+					hb->nei[ni].number -= (int)start_box;
+				}
+			}
+
+			per_core_box[c] = box_c + start_box;
+			per_core_dim[c] = dim_cpu;
+			per_core_dim[c].number_boxes = my_num_boxes;
+		}
+	}
+
+	//======================================================================================================================================================150
 	//	KERNEL
 	//======================================================================================================================================================150
 
@@ -322,12 +363,20 @@ int main(int argc, char *argv [])
     //cycles1 = get_cycles_count();
 
 	start_timer();
+	} // end if (hart_id == 0) -- setup and timer start
+
+	sync_barrier();
+
 	kernel_cpu(	par_cpu,
-				dim_cpu,
-				box_cpu,
+				per_core_dim[hart_id],
+				per_core_box[hart_id],
 				rv_cpu,
 				qv_cpu,
 				fv_cpu);
+
+	sync_barrier();
+
+	if (hart_id == 0) {
 	stop_timer();
 
 	int64_t cycles = get_timer();
@@ -380,6 +429,8 @@ int main(int argc, char *argv [])
 	// free(box_cpu);
 
 	// time7 = get_time();
+
+	} // end if (hart_id == 0) -- output
 
 	//======================================================================================================================================================150
 	//	DISPLAY TIMING
