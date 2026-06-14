@@ -93,12 +93,33 @@
 
 //uncomment to compile with additional error checks
 #define NDEBUG
-#ifdef ENABLE_THREADS
-#include "atomic/atomic.h"
+#if defined(ENABLE_THREADS) || (NR_CORES > 1)
+#define ATOMICPTR_USE_ATOMICS
 #endif
 
 #include <stddef.h>
 #include <assert.h>
+
+extern "C" unsigned long canneal_atomic_ptr_pool[];
+extern unsigned long canneal_atomic_ptr_next_slot;
+
+#ifdef ATOMICPTR_USE_ATOMICS
+template <typename T>
+inline bool atomic_cmpset_ptr(T *ptr, T expected, T desired) {
+  return __atomic_compare_exchange_n(ptr, &expected, desired, false,
+                                     __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE);
+}
+
+template <typename T>
+inline T atomic_load_acq_ptr(const T *ptr) {
+  return __atomic_load_n(ptr, __ATOMIC_ACQUIRE);
+}
+
+template <typename T>
+inline void atomic_store_rel_ptr(T *ptr, T value) {
+  __atomic_store_n(ptr, value, __ATOMIC_RELEASE);
+}
+#endif
 
 namespace threads {
 
@@ -108,27 +129,30 @@ class AtomicPtr {
     //the pointer to access atomically and types to use for access (32-bit or 64-bit width)
 #if defined(_LP64)
     typedef long unsigned int ATOMIC_TYPE;
-    T *p __attribute__ ((aligned (8)));
 #else
     typedef unsigned int ATOMIC_TYPE;
-    T *p __attribute__ ((aligned (4)));
 #endif
+    ATOMIC_TYPE *p;
 
     //value to use internally to indicate a temporarily unaccessible pointer
     static const T *ATOMIC_NULL;
+
+    inline ATOMIC_TYPE *AllocAtomicWord() {
+      return (ATOMIC_TYPE *)&canneal_atomic_ptr_pool[canneal_atomic_ptr_next_slot++];
+    }
 
     //helper function to set the pointer to a value (without any checks)
     inline T *PrivateSet(T *x) {
       T *val;
 
-#ifdef ENABLE_THREADS
+#ifdef ATOMICPTR_USE_ATOMICS
       do {
         val = Get();
-      } while(!atomic_cmpset_ptr((ATOMIC_TYPE *)&p, (ATOMIC_TYPE)val, (ATOMIC_TYPE)x));
+      } while(!atomic_cmpset_ptr(p, (ATOMIC_TYPE)val, (ATOMIC_TYPE)x));
 #else
         val = Get();
-        p = x;
-#endif //ENABLE_THREADS
+        *p = (ATOMIC_TYPE)x;
+#endif //ATOMICPTR_USE_ATOMICS
 
       return val;
     }
@@ -138,21 +162,21 @@ class AtomicPtr {
       T *val;
       bool rv;
 
-#ifdef ENABLE_THREADS
+#ifdef ATOMICPTR_USE_ATOMICS
       if(!TryGet(&val)) {
         return false;
       }
-      rv = atomic_cmpset_ptr((ATOMIC_TYPE *)&p, (ATOMIC_TYPE)val, (ATOMIC_TYPE)x);
+      rv = atomic_cmpset_ptr(p, (ATOMIC_TYPE)val, (ATOMIC_TYPE)x);
       if(rv && (y != NULL)) {
         *y = val;
       }
       return rv;
 #else
-      assert(p != ATOMIC_NULL);
-      *y = p;
-      p = x;
+      assert((T *)*p != ATOMIC_NULL);
+      *y = (T *)*p;
+      *p = (ATOMIC_TYPE)x;
       return true;
-#endif //ENABLE_THREADS
+#endif //ATOMICPTR_USE_ATOMICS
     }
 
   public:
@@ -161,12 +185,20 @@ class AtomicPtr {
     //regular constructor
     AtomicPtr(T *x) {
       assert(x != ATOMIC_NULL);
-      p = x;
+      p = AllocAtomicWord();
+      *p = (ATOMIC_TYPE)x;
     }
 
     //copy constructor
     AtomicPtr(const AtomicPtr<T> &X) {
-      p = X.Get();
+      p = AllocAtomicWord();
+      *p = (ATOMIC_TYPE)X.Get();
+    }
+
+    inline void BindAtomicWord(T *x) {
+      assert(x != ATOMIC_NULL);
+      p = AllocAtomicWord();
+      *p = (ATOMIC_TYPE)x;
     }
 
     // *** Functions to modify and obtain encapsulated data ***
@@ -189,14 +221,14 @@ class AtomicPtr {
     inline T *Get() const {
       T *val;
 
-#ifdef ENABLE_THREADS
+#ifdef ATOMICPTR_USE_ATOMICS
       do {
-        val = (T *)atomic_load_acq_ptr((ATOMIC_TYPE *)&p);
+        val = (T *)atomic_load_acq_ptr(p);
       } while(val == ATOMIC_NULL);
 #else
-      val = p;
+      val = (T *)*p;
       assert(val != ATOMIC_NULL);
-#endif //ENABLE_THREADS
+#endif //ATOMICPTR_USE_ATOMICS
 
       return val;
     }
@@ -207,11 +239,11 @@ class AtomicPtr {
     inline bool TryGet(T **x) const {
       T *val;
 
-#ifdef ENABLE_THREADS
-      val = (T *)atomic_load_acq_ptr((ATOMIC_TYPE *)&p);
+#ifdef ATOMICPTR_USE_ATOMICS
+      val = (T *)atomic_load_acq_ptr(p);
 #else
-      val = p;
-#endif //ENABLE_THREADS
+      val = (T *)*p;
+#endif //ATOMICPTR_USE_ATOMICS
       if(val != ATOMIC_NULL) {
         *x = val;
         return true;
@@ -288,11 +320,15 @@ class AtomicPtr {
 
     //release an exclusive pointer (mutex unlock semantics)
     inline void Checkin(T *x) {
-#ifdef ENABLE_TRHEADS
-      atomic_store_rel_ptr((ATOMIC_TYPE *)(&p), (ATOMIC_TYPE)x);
+#ifdef ATOMICPTR_USE_ATOMICS
+      atomic_store_rel_ptr(p, (ATOMIC_TYPE)x);
 #else
-      p = x;
-#endif //ENABLE_THREADS
+      *p = (ATOMIC_TYPE)x;
+#endif //ATOMICPTR_USE_ATOMICS
+    }
+
+    inline unsigned long *atomic_word() {
+      return (unsigned long *)p;
     }
 
 
@@ -308,11 +344,11 @@ class AtomicPtr {
     }
 
     T *operator=(AtomicPtr<T> X) {
-#ifdef ENABLE_THREADS
-      T *val = (T *)atomic_load_acq_ptr((ATOMIC_TYPE *)&X.p);
+#ifdef ATOMICPTR_USE_ATOMICS
+      T *val = (T *)atomic_load_acq_ptr(X.p);
 #else
-      T * val = X.p;
-#endif //ENABLE_THREADS
+      T * val = (T *)*X.p;
+#endif //ATOMICPTR_USE_ATOMICS
       Set(val);
       return val;
     }

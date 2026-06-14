@@ -31,7 +31,7 @@
 #ifndef ANNEALER_THREAD_H
 #define ANNEALER_THREAD_H
 
-#ifdef ENABLE_THREADS
+#if defined(ENABLE_THREADS) && (NR_CORES == 1)
 #include <pthread.h>
 #endif
 
@@ -39,6 +39,8 @@
 #include "netlist.h"
 #include "netlist_elem.h"
 #include "rng.h"
+
+extern "C" int canneal_keep_going_global_flag;
 
 // Maximum vector mask size for RISC-V operations (compile-time constant)
 #define MAX_MASK_SIZE 1024
@@ -52,6 +54,38 @@ public:
 		move_decision_rejected
 	};
 
+	annealer_thread()
+	:_netlist(NULL),
+	_moves_per_thread_temp(0),
+	_start_temp(0),
+	_number_temp_steps(0)
+	{
+#ifdef USE_RISCV_VECTOR
+		for(int i = 0; i < MAX_MASK_SIZE; i++) {
+			mask[i] = 0x55555555;
+		}
+#endif
+	};
+
+	void init(
+		netlist* netlist,
+		int nthreads,
+		int swaps_per_temp,
+		int start_temp,
+		int number_temp_steps
+	)
+	{
+		_netlist = netlist;
+		__atomic_store_n(&canneal_keep_going_global_flag, 1, __ATOMIC_RELAXED);
+		_moves_per_thread_temp = swaps_per_temp/nthreads;
+		_start_temp = start_temp;
+		_number_temp_steps = number_temp_steps;
+		assert(_netlist != NULL);
+#if defined(ENABLE_THREADS) && (NR_CORES == 1)
+		pthread_barrier_init(&_barrier, NULL, nthreads);
+#endif
+	};
+
 	annealer_thread(
 		netlist* netlist,
 		int nthreads,
@@ -59,36 +93,23 @@ public:
 		int start_temp,
 		int number_temp_steps
 	)
-	:_netlist(netlist),
-	_keep_going_global_flag(true),
-	_moves_per_thread_temp(swaps_per_temp/nthreads),
-	_start_temp(start_temp),
-	_number_temp_steps(number_temp_steps)
+	:annealer_thread()
 	{
-		assert(_netlist != NULL);
-#ifdef ENABLE_THREADS
-		pthread_barrier_init(&_barrier, NULL, nthreads);
-#endif
-#ifdef USE_RISCV_VECTOR
-		// Initialize mask array with pattern 0x55555555
-		for(int i = 0; i < MAX_MASK_SIZE; i++) {
-			mask[i] = 0x55555555;
-		}
-#endif
+		init(netlist, nthreads, swaps_per_temp, start_temp, number_temp_steps);
 	};
 	
 	~annealer_thread() {
-#ifdef ENABLE_THREADS
+#if defined(ENABLE_THREADS) && (NR_CORES == 1)
 		pthread_barrier_destroy(&_barrier);
 #endif
 	}					
-	void Run();
+	void Run(int hart_id);
 					
 protected:
 	move_decision_t accept_move(routing_cost_t delta_cost, double T, Rng* rng);
 
 #ifdef USE_RISCV_VECTOR
-	routing_cost_t calculate_delta_routing_cost_vector(netlist_elem* a, netlist_elem* b/*,__epi_2xi1  xMask*/);
+	routing_cost_t calculate_delta_routing_cost_vector(netlist_elem* a, netlist_elem* b, int hart_id/*,__epi_2xi1  xMask*/);
 #else // !USE_RISCV_VECTOR
 	routing_cost_t calculate_delta_routing_cost(netlist_elem* a, netlist_elem* b);
 #endif // !USE_RISCV_VECTOR
@@ -97,7 +118,6 @@ protected:
 
 protected:
 	netlist* _netlist;		
-	bool _keep_going_global_flag;
 	int _moves_per_thread_temp;
 	int _start_temp;
 	int _number_temp_steps;
@@ -105,10 +125,9 @@ protected:
 	int mask[MAX_MASK_SIZE]; // C-style fixed-size array, initialized in constructor
 #endif // !USE_RISCV_VECTOR
 
-#ifdef ENABLE_THREADS
+#if defined(ENABLE_THREADS) && (NR_CORES == 1)
 	pthread_barrier_t _barrier;
 #endif
 };
 
 #endif
-

@@ -49,7 +49,9 @@ class Rng;
 class netlist
 {
 public:
+	netlist(); // default ctor for static shared instance
 	netlist(bool use_compiled_data); //ctor with compiled static data
+	void init(bool use_compiled_data); // explicit one-time init
 	void get_random_pair(netlist_elem** a, netlist_elem** b, Rng* rng); // will return an element that we have a valid mutex on
 	void swap_locations(netlist_elem* elem_a, netlist_elem* elem_b);
 	void shuffle(Rng* rng);
@@ -75,4 +77,3 @@ protected:
 
 
 #endif
-

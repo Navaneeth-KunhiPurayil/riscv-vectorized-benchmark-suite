@@ -184,13 +184,28 @@ netlist_elem* netlist::find_elem_by_name(const char* name)
 	return NULL;
 }
 
-//*****************************************************************************************
-// Constructor using pre-computed index-based netlist data from gen_data.py.
-// All name-to-index resolution and fanin/fanout computation was done at generation time.
-// This constructor only sets up the location grid and copies pre-computed index-based
-// connections into pointer arrays — no string lookups needed.
-//*****************************************************************************************
+netlist::netlist()
+:	_num_elements(0),
+	_max_x(0),
+	_max_y(0),
+	_chip_size(0),
+	_total_used(0)
+{
+}
+
 netlist::netlist(bool use_compiled_data)
+:	netlist()
+{
+	init(use_compiled_data);
+}
+
+//*****************************************************************************************
+// Initialize from pre-computed index-based netlist data from gen_data.py.
+// All name-to-index resolution and fanin/fanout computation was done at generation time.
+// This only sets up the location grid and copies pre-computed index-based connections into
+// pointer arrays — no string lookups needed.
+//*****************************************************************************************
+void netlist::init(bool use_compiled_data)
 {
 	if (!use_compiled_data) {
 		assert(false);
@@ -207,13 +222,14 @@ netlist::netlist(bool use_compiled_data)
 	// 1. Initialize location grid + element defaults
 	printf("Initializing netlist with %lu elements, max_x=%lu, max_y=%lu\n",
 	       _num_elements, _max_x, _max_y);
+	canneal_atomic_ptr_next_slot = 0;
 	unsigned i_elem = 0;
 	for (int x = 0; x < (int)_max_x; x++) {
 		for (int y = 0; y < (int)_max_y; y++) {
 			location_t* loc = &_locations[x][y];
 			loc->x = x;
 			loc->y = y;
-			_elements[i_elem].present_loc.Set(loc);
+			_elements[i_elem].present_loc.BindAtomicWord(loc);
 			_elements[i_elem].fanin_count    = 0;
 			_elements[i_elem].fanout_count   = 0;
 			_elements[i_elem].fan_locs_count = 0;
@@ -262,7 +278,7 @@ netlist::netlist(bool use_compiled_data)
 		_elements[i].fan_locs_count = cnt;
 		for (unsigned j = 0; j < cnt; j++) {
 			_elements[i].fan_locs[j] =
-				(unsigned long *)&_elements[compiled_fanlocs_flat[off + j]].present_loc;
+				_elements[compiled_fanlocs_flat[off + j]].present_loc.atomic_word();
 		}
 	}
 #endif

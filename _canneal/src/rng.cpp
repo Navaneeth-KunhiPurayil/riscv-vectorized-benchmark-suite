@@ -30,27 +30,18 @@
 #include "rng.h"
 #include <stdlib.h>
 
-//global seed used for rng initialization
-unsigned int Rng::seed = 0;
-#ifdef ENABLE_THREADS  
-pthread_mutex_t Rng::seed_lock = PTHREAD_MUTEX_INITIALIZER;
-#endif
-
-//actually declare the static member of the class.  C++ can be ugly sometimes
-
 long Rng::rand(int max)
 {
-	return _rng.randInt(max-1);//need to round off to keep BELOW max!
+	return ::rand() % max;
 }
 
 
 long Rng::rand()
 {
-	return _rng.randInt();
+	return ::rand();
 }
 
 double Rng::drand()
 {
-	return _rng.rand();
+	return (double)::rand() / ((double)RAND_MAX + 1.0);
 }
-

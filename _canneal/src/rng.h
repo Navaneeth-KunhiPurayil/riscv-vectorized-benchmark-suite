@@ -30,35 +30,18 @@
 #ifndef RNG_H
 #define RNG_H
 
-#ifdef ENABLE_THREADS
-#include <pthread.h>
-#endif
-
-#include "MersenneTwister.h"
+#include <stdlib.h>
 
 class Rng
 {
 public:
 	Rng() {
-#ifdef ENABLE_THREADS
-		pthread_mutex_lock(&seed_lock);
-		_rng = MTRand(seed++);
-		pthread_mutex_unlock(&seed_lock);
-#else
-		_rng = MTRand(seed++);
-#endif //ENABLE_THREADS
 	}
 	~Rng() {
 	}
 	long rand();
 	long rand(int max);
 	double drand();
-protected:
-	//use same random seed for each run
-	static unsigned int seed;
-	static pthread_mutex_t seed_lock;
-	MTRand _rng;
 };
 
 #endif
-

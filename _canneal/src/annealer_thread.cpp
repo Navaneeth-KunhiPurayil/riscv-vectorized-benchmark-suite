@@ -26,17 +26,19 @@
 // OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 // SUCH DAMAGE.
 
-#ifdef ENABLE_THREADS
+#if defined(ENABLE_THREADS) && (NR_CORES == 1)
 #include <pthread.h>
 #endif
  
 #include "assert.h"
+#include <math.h>
 #include "annealer_thread.h"
 #include "location_t.h"
 #include "annealer_types.h"
 #include "netlist_elem.h"
 #include "rng.h"
 
+#include "runtime.h"
 #include "printf.h"
 
 // RISC-V VECTOR Version by Cristóbal Ramírez Lazo, "Barcelona 2019"
@@ -48,7 +50,7 @@
 //*****************************************************************************************
 //
 //*****************************************************************************************
-void annealer_thread::Run()
+void annealer_thread::Run(int hart_id)
 {
     int accepted_good_moves=0;
     int accepted_bad_moves=-1;
@@ -65,9 +67,15 @@ void annealer_thread::Run()
 
     int temp_steps_completed=0;
 
+#ifdef CANNEAL_DEBUG
+    if (hart_id==0) printf("hart %d starting annealer\n", hart_id);
+#endif
+
     while(keep_going(temp_steps_completed, accepted_good_moves, accepted_bad_moves)){
-        printf("Temperature: %f step: %d good moves: %d bad moves: %d\n", T, 
+#ifdef CANNEAL_DEBUG
+        if (hart_id==0) printf("Temperature: %f step: %d good moves: %d bad moves: %d\n", T, 
                          temp_steps_completed, accepted_good_moves, accepted_bad_moves);
+#endif
         T = T / 1.5;
         accepted_good_moves = 0;
         accepted_bad_moves = 0;
@@ -78,7 +86,7 @@ void annealer_thread::Run()
             a_id = b_id;
             b = _netlist->get_random_element(&b_id, a_id, &rng);
     #ifdef USE_RISCV_VECTOR
-            routing_cost_t delta_cost = calculate_delta_routing_cost_vector(a,b);
+            routing_cost_t delta_cost = calculate_delta_routing_cost_vector(a,b, hart_id);
     #else // !USE_RISCV_VECTOR
             routing_cost_t delta_cost = calculate_delta_routing_cost(a,b);
     #endif // !USE_RISCV_VECTOR
@@ -97,10 +105,15 @@ void annealer_thread::Run()
             } else if (is_good_move == move_decision_rejected){
                 //no need to do anything for a rejected move
             }
+#if NR_CORES > 1
+            sync_barrier();
+#endif
         }
 
         temp_steps_completed++;
-#ifdef ENABLE_THREADS
+#if NR_CORES > 1
+        sync_barrier();
+#elif defined(ENABLE_THREADS) && (NR_CORES == 1)
         pthread_barrier_wait(&_barrier);
 #endif
     }
@@ -129,7 +142,7 @@ annealer_thread::move_decision_t annealer_thread::accept_move(routing_cost_t del
 //  If get turns out to be expensive, I can reduce the # by passing it into the swap cost fcn
 //*****************************************************************************************
 #ifdef USE_RISCV_VECTOR
-routing_cost_t annealer_thread::calculate_delta_routing_cost_vector(netlist_elem* a, netlist_elem* b/*, __epi_2xi1  xMask2*/)
+routing_cost_t annealer_thread::calculate_delta_routing_cost_vector(netlist_elem* a, netlist_elem* b, int hart_id/*, __epi_2xi1  xMask2*/)
 {
     routing_cost_t delta_cost=0.0;
 
@@ -148,10 +161,10 @@ routing_cost_t annealer_thread::calculate_delta_routing_cost_vector(netlist_elem
         _MMR_i32 xAFanin_loc     = _MM_MERGE_i32(_MM_SET_i32(a_loc->y,gvl),_MM_SET_i32(a_loc->x,gvl),xMask,gvl);
         _MMR_i32 xBFanin_loc     = _MM_MERGE_i32(_MM_SET_i32(b_loc->y,gvl),_MM_SET_i32(b_loc->x,gvl),xMask,gvl);
         if(a_fan_size > 0) {
-            delta_cost = a->swap_cost_vector(xAFanin_loc,xBFanin_loc,a_fan_size);
+            delta_cost = a->swap_cost_vector(xAFanin_loc,xBFanin_loc,a_fan_size, hart_id);
         }
         if(b_fan_size > 0) {
-            delta_cost = delta_cost + b->swap_cost_vector(xBFanin_loc,xAFanin_loc,b_fan_size);
+            delta_cost = delta_cost + b->swap_cost_vector(xBFanin_loc,xAFanin_loc,b_fan_size, hart_id);
         }
 #else
         unsigned long int gvl;
@@ -164,10 +177,10 @@ routing_cost_t annealer_thread::calculate_delta_routing_cost_vector(netlist_elem
         asm volatile ("vmerge.vvm v4, v8, v4, v0"); // xAFanin_loc
         asm volatile ("vmerge.vvm v12, v16, v12, v0"); // xBFanin_loc
         if(a_fan_size > 0) {
-            delta_cost = a->swap_cost_vector(a_fan_size);
+            delta_cost = a->swap_cost_vector(a_fan_size, hart_id);
         }
         if(b_fan_size > 0) {
-            delta_cost = delta_cost - b->swap_cost_vector(b_fan_size); 
+            delta_cost = delta_cost - b->swap_cost_vector(b_fan_size, hart_id); 
             // (-) here since we don't swap the registers v4 and v12 within the swap_cost_vector function
         }
 #endif        
@@ -203,8 +216,11 @@ bool annealer_thread::keep_going(int temp_steps_completed, int accepted_good_mov
 
     if(_number_temp_steps == -1) {
         //run until design converges
-        rv = _keep_going_global_flag && (accepted_good_moves > accepted_bad_moves);
-        if(!rv) _keep_going_global_flag = false; // signal we have converged
+        rv = __atomic_load_n(&canneal_keep_going_global_flag, __ATOMIC_ACQUIRE) &&
+             (accepted_good_moves > accepted_bad_moves);
+        if(!rv) {
+            __atomic_store_n(&canneal_keep_going_global_flag, 0, __ATOMIC_RELEASE);
+        }
     } else {
         //run a fixed amount of steps
         rv = temp_steps_completed < _number_temp_steps;

@@ -39,10 +39,6 @@
 #include "common/vector_defines.h"
 #endif
 
-#ifdef ENABLE_THREADS
-#include <pthread.h>
-#endif
-
 #ifdef ENABLE_PARSEC_HOOKS
 #include <hooks.h>
 #endif
@@ -56,69 +52,83 @@
 #include "printf.h"
 #include "runtime.h"
 
+// Keep large benchmark state out of the per-hart stack.
+static netlist shared_netlist;
+static annealer_thread a_threads[NR_CORES];
+
 // Static compile-time configuration for CANNEAL
 #define USE_COMPILED_NETLIST
-#define CANNEAL_NUM_THREADS 1
+#define CANNEAL_NUM_THREADS (NR_CORES)
 #define CANNEAL_SWAPS_PER_TEMP 100
 #define CANNEAL_START_TEMP 2000
 #define CANNEAL_NUM_TEMP_STEPS 10  // -1 means run until convergence
 
 void* entry_pt(void*);
 
-int main (int argc, char **argv) {
+int main (int hart_id) {
 
 	// Baremetal execution - no stdout or system time available
+
+#if NR_CORES == 1
+	if (hart_id != 0) {
+		while (1)
+			;
+	}
+#endif
 	
 #ifdef ENABLE_PARSEC_HOOKS
 	__parsec_bench_begin(__parsec_canneal);
 #endif
 
-	// srandom(3);
-
 	// Use statically defined configuration values (no command-line parsing)
 	int num_threads = CANNEAL_NUM_THREADS;
-
-#ifndef ENABLE_THREADS
-	if (num_threads != 1){
-		exit(1);
-	}
-#endif
 
 	// Use static configuration values
 	int swaps_per_temp = CANNEAL_SWAPS_PER_TEMP;
 	int start_temp = CANNEAL_START_TEMP;
 	int number_temp_steps = CANNEAL_NUM_TEMP_STEPS;
 
-	printf(" CANNEAL Configuration:\n");
-	printf("  num_threads: %d\n", num_threads);
-	printf("  swaps_per_temp: %d\n", swaps_per_temp);
-	printf("  start_temp: %d\n", start_temp);
-	printf("  number_temp_steps: %d\n", number_temp_steps);
-	printf("  Lanes=%d\n", NR_LANES);
-	printf("  Clusters=%d\n", NR_CLUSTERS);
+	if (hart_id == 0) {
+		srand(0);
+		shared_netlist.init(true);
+	}
+#if NR_CORES > 1
+	sync_barrier();
+#endif
 
-
-	//now that we've read in the commandline, run the program
-	netlist my_netlist(true); // Use compiled static netlist data
-
-	annealer_thread a_thread(&my_netlist,num_threads,swaps_per_temp,start_temp,number_temp_steps);
+	if (hart_id == 0) {
+		printf(" CANNEAL Configuration:\n");
+		printf("  num_cores: %d\n", num_threads);
+		printf("  swaps_per_temp: %d\n", swaps_per_temp);
+		printf("  start_temp: %d\n", start_temp);
+		printf("  number_temp_steps: %d\n", number_temp_steps);
+		printf("  Lanes=%d\n", NR_LANES);
+		printf("  Clusters=%d\n", NR_CLUSTERS);
+		printf("  shared_netlist_size: %lu addr:%p\n", (unsigned long)sizeof(shared_netlist), (void*)&shared_netlist);
+	}
+	a_threads[hart_id].init(&shared_netlist, num_threads, swaps_per_temp, start_temp, number_temp_steps);
 	
 #ifdef ENABLE_PARSEC_HOOKS
 	__parsec_roi_begin();
 #endif
 
-#ifdef ENABLE_THREADS
-	std::vector<pthread_t> threads(num_threads);
-	void* thread_in = static_cast<void*>(&a_thread);
-	for(int i=0; i<num_threads; i++){
-		pthread_create(&threads[i], NULL, entry_pt,thread_in);
-	}
-	for (int i=0; i<num_threads; i++){
-		pthread_join(threads[i], NULL);
+#if NR_CORES > 1
+	sync_barrier();
+	if (hart_id == 0) {
+		start_timer();
 	}
 #else
 	start_timer();
-	a_thread.Run();
+#endif
+
+	a_threads[hart_id].Run(hart_id);
+
+#if NR_CORES > 1
+	sync_barrier();
+	if (hart_id == 0) {
+		stop_timer();
+	}
+#else
 	stop_timer();
 #endif
 
@@ -127,20 +137,24 @@ int main (int argc, char **argv) {
 #endif
 
 #ifdef USE_RISCV_VECTOR
-	extern unsigned long swap_cost_vector_calls;
-	int64_t cycles = get_timer();
-	int64_t total_ops = 
-	printf("Total execution time [sw-cycles]: %ld\n", get_timer());
-	printf("swap_cost_vector calls: %lu\n", swap_cost_vector_calls);
+	extern unsigned long swap_cost_vector_calls[NR_CORES];
+
+	if (hart_id == 0) {
+		printf("Total execution time [sw-cycles]: %ld\n", get_timer());
+	}
+
+#if NR_CORES > 1
+	for (int core = 0; core < num_threads; core++) {
+		if (hart_id == core) {
+			printf("hart %d swap_cost_vector calls: %lu\n", hart_id, swap_cost_vector_calls[hart_id]);
+		}
+		sync_barrier();
+	}
+#else
+	printf("hart %d swap_cost_vector calls: %lu\n", hart_id, swap_cost_vector_calls[hart_id]);
+#endif
 #endif
 
 	return 0;
 	
 }
-/*
-void* entry_pt(void* data)
-{
-	annealer_thread* ptr = static_cast<annealer_thread*>(data);
-	ptr->Run();
-}
-*/

@@ -39,10 +39,10 @@
 #endif
 
 // Maximum fanin/fanout connections per element (C-style array size)
-#define MAX_FAN_LOCS_PER_ELEM 512
-#define MAX_FANIN_PER_ELEM 2048
-#define MAX_FANOUT_PER_ELEM 2048
-#define MAX_ELEMENT_NAME_LENGTH 256
+#define MAX_FAN_LOCS_PER_ELEM 32
+#define MAX_FANIN_PER_ELEM 32
+#define MAX_FANOUT_PER_ELEM 32
+#define MAX_ELEMENT_NAME_LENGTH 8
 
 using threads::AtomicPtr;
 
@@ -52,9 +52,9 @@ public:
 	routing_cost_t routing_cost_given_loc(location_t loc);
 #ifdef USE_RISCV_VECTOR
 #ifdef INTRINSICS
-	routing_cost_t swap_cost_vector(_MMR_i32 xAFanin_loc ,_MMR_i32 xBFanin_loc ,int a_fan_size);
+	routing_cost_t swap_cost_vector(_MMR_i32 xAFanin_loc ,_MMR_i32 xBFanin_loc ,int a_fan_size, int hart_id);
 #else
-	routing_cost_t swap_cost_vector(int a_fan_size);
+	routing_cost_t swap_cost_vector(int a_fan_size, int hart_id);
 #endif
 #else // !USE_RISCV_VECTOR
 	routing_cost_t swap_cost(location_t* old_loc, location_t* new_loc);
