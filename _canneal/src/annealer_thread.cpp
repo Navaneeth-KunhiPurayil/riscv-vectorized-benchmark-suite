@@ -55,12 +55,20 @@ void annealer_thread::Run(int hart_id)
     int accepted_good_moves=0;
     int accepted_bad_moves=-1;
     double T = _start_temp;
-    Rng rng; //store of randomness
+    Rng rng(0xC0FFEEUL + (unsigned long)hart_id); //store of randomness
 
     long a_id;
     long b_id;
     
     netlist_elem* a = _netlist->get_random_element(&a_id, NO_MATCHING_ELEMENT, &rng);
+    // if (hart_id==0) {
+    //     printf("Initial element name: %s (ID: %ld)\n", a->item_name, a_id);
+    // }
+    // sync_barrier();
+    // if (hart_id==1) {
+    //     printf("Initial element name: %s (ID: %ld)\n", a->item_name, a_id);
+    // }
+    // sync_barrier();
     // printf("Initial element name: %s (ID: %ld)\n", a->item_name, a_id);
     netlist_elem* b = _netlist->get_random_element(&b_id, NO_MATCHING_ELEMENT, &rng);
     // printf("Initial element name: %s (ID: %ld)\n", b->item_name, b_id);
@@ -94,6 +102,13 @@ void annealer_thread::Run(int hart_id)
             // printf("Delta cost: %f\n", delta_cost);
 
             move_decision_t is_good_move = accept_move(delta_cost, T, &rng);
+
+#if NR_CORES > 1
+            // Need this barrier to ensure another thread is not computing the cost on the same element which is being swapped
+            // To ensure an fan_locs pointer is not read as 0x00000001 which is ATOMIC NULL
+            // Could be optimized as not expected to happen always
+            sync_barrier();
+#endif
 
             //make the move, and update stats:
             if (is_good_move == move_decision_accepted_bad){

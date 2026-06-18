@@ -30,18 +30,46 @@
 #include "rng.h"
 #include <stdlib.h>
 
+static unsigned long mix_seed(unsigned long seed)
+{
+	seed ^= seed >> 16;
+	seed *= 0x7feb352dUL;
+	seed ^= seed >> 15;
+	seed *= 0x846ca68bUL;
+	seed ^= seed >> 16;
+	return seed ? seed : 1;
+}
+
+Rng::Rng()
+{
+	seed(1);
+}
+
+Rng::Rng(unsigned long seed_value)
+{
+	seed(seed_value);
+}
+
+void Rng::seed(unsigned long seed_value)
+{
+	_state = mix_seed(seed_value);
+}
+
 long Rng::rand(int max)
 {
-	return ::rand() % max;
+	return rand() % max;
 }
 
 
 long Rng::rand()
 {
-	return ::rand();
+	_state ^= _state << 13;
+	_state ^= _state >> 17;
+	_state ^= _state << 5;
+	return (long)(_state & 0x7fffffffUL);
 }
 
 double Rng::drand()
 {
-	return (double)::rand() / ((double)RAND_MAX + 1.0);
+	return (double)rand() / 2147483648.0;
 }

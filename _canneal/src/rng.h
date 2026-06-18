@@ -35,13 +35,17 @@
 class Rng
 {
 public:
-	Rng() {
-	}
+	Rng();
+	Rng(unsigned long seed);
 	~Rng() {
 	}
+	void seed(unsigned long seed);
 	long rand();
 	long rand(int max);
 	double drand();
+
+private:
+	unsigned long _state;
 };
 
 #endif
