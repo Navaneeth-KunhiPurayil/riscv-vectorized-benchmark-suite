@@ -21,6 +21,7 @@
 #include <math.h>
 #include <sys/resource.h>
 #include <limits.h>
+#include <stdint.h>
 
 #ifdef USE_RISCV_VECTOR
 #include "common/vector_defines.h"
@@ -89,7 +90,47 @@ static bool *switch_membership; //whether to switch membership in pgain
 static bool* is_center; //whether a point is a center
 static int* center_table; //index table of centers
 
-const int nproc = 1; //# of threads
+const int nproc = NR_CORES; //# of threads
+
+#if NR_CORES > 1
+extern "C" int streamcluster_pspeedy_cond_generation;
+extern "C" int streamcluster_pspeedy_i;
+extern "C" int streamcluster_printf_lock;
+extern "C" long streamcluster_pspeedy_kcenter;
+extern "C" double streamcluster_pspeedy_cost;
+extern "C" double streamcluster_pgain_cost_of_opening;
+extern "C" int streamcluster_pgain_centers_to_close;
+
+static inline void baremetal_print_lock()
+{
+  while (__atomic_exchange_n(&streamcluster_printf_lock, 1, __ATOMIC_ACQUIRE) != 0) {
+    while (__atomic_load_n(&streamcluster_printf_lock, __ATOMIC_RELAXED) != 0)
+      ;
+  }
+}
+
+static inline void baremetal_print_unlock()
+{
+  __atomic_store_n(&streamcluster_printf_lock, 0, __ATOMIC_RELEASE);
+}
+
+static inline int baremetal_wait_next_generation(int seen_generation)
+{
+  int generation;
+  do {
+    generation = __atomic_load_n(&streamcluster_pspeedy_cond_generation,
+                                 __ATOMIC_ACQUIRE);
+  } while (generation == seen_generation);
+  return generation;
+}
+
+static inline void baremetal_publish_center(int center_index)
+{
+  __atomic_store_n(&streamcluster_pspeedy_i, center_index, __ATOMIC_RELEASE);
+  __atomic_fetch_add(&streamcluster_pspeedy_cond_generation, 1,
+                     __ATOMIC_RELEASE);
+}
+#endif
 
 // Parameters and data from the statically compiled data.S
 
@@ -111,8 +152,29 @@ tbb::cache_aligned_allocator<int> memoryInt;
 tbb::cache_aligned_allocator<bool> memoryBool;
 #endif
 
-static int cnt_dist=0; // for counting number of distance calculations
+static int cnt_dist[NR_CORES] = {0}; // per-core distance calculation counts
 float dist(Point p1, Point p2, int dim);
+
+static inline void cnt_dist_increment(int hart_id)
+{
+  cnt_dist[hart_id]++;
+}
+
+static int cnt_dist_total()
+{
+  int total = 0;
+  for (int core = 0; core < NR_CORES; core++) {
+    total += cnt_dist[core];
+  }
+  return total;
+}
+
+static void cnt_dist_reset_all()
+{
+  for (int core = 0; core < NR_CORES; core++) {
+    cnt_dist[core] = 0;
+  }
+}
 
 
 #ifdef TBB_VERSION
@@ -175,9 +237,9 @@ void intshuffle(int *intarray, int length)
 }
 
 /* compute Euclidean distance squared between two points */
-float dist(Point p1, Point p2, int dim )
+float dist(Point p1, Point p2, int dim, int hart_id)
 {
-  cnt_dist++;
+  cnt_dist_increment(hart_id);
   
 #ifdef USE_RISCV_VECTOR
   float result=0.0;
@@ -253,9 +315,31 @@ float dist(Point p1, Point p2, int dim )
 static double costs[nproc];
 float pspeedy(Points *points, float z, long *kcenter, int pid, pthread_barrier_t* barrier)
 {
+  for (int c=0; c<nproc; c++) {
+    sync_barrier();
+    if (pid == c) {
+#if NR_CORES > 1
+      baremetal_print_lock();
+#endif
+      printf("----------------pspeedy thread: %d----------------\n", pid);
+#if NR_CORES > 1
+      baremetal_print_unlock();
+#endif
+    }
+    sync_barrier();
+  }
+
 #ifdef ENABLE_THREADS
   pthread_barrier_wait(barrier);
 #endif
+#if NR_CORES > 1
+  if (pid == 0) {
+    __atomic_store_n(&streamcluster_pspeedy_cond_generation, 0, __ATOMIC_RELEASE);
+    __atomic_store_n(&streamcluster_pspeedy_i, 0, __ATOMIC_RELEASE);
+  }
+  sync_barrier();
+#endif  
+
   //my block
   long bsize = points->num/nproc;
   long k1 = bsize * pid;
@@ -265,8 +349,13 @@ float pspeedy(Points *points, float z, long *kcenter, int pid, pthread_barrier_t
 
   static double totalcost;
 
+#if defined(ENABLE_THREADS) || (NR_CORES == 1)
   static bool open = false;
+#endif
   static int i;
+#if NR_CORES > 1
+  int seen_generation = 0;
+#endif
 
 #ifdef ENABLE_THREADS
   static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -275,7 +364,7 @@ float pspeedy(Points *points, float z, long *kcenter, int pid, pthread_barrier_t
 
   /* create center at first point, send it to itself */
   for( int k = k1; k < k2; k++ )    {
-    float distance = dist(points->p[k],points->p[0],points->dim );
+    float distance = dist(points->p[k],points->p[0],points->dim, pid);
     points->p[k].cost = distance * points->p[k].weight;
     points->p[k].assign=0;
   }
@@ -287,6 +376,9 @@ float pspeedy(Points *points, float z, long *kcenter, int pid, pthread_barrier_t
 #ifdef ENABLE_THREADS
   pthread_barrier_wait(barrier);
 #endif
+#if NR_CORES > 1
+  sync_barrier();
+#endif 
 
   if( pid != 0 ) { // we are not the master threads. we wait until a center is opened.
     while(1) {
@@ -295,19 +387,29 @@ float pspeedy(Points *points, float z, long *kcenter, int pid, pthread_barrier_t
       while(!open) pthread_cond_wait(&cond,&mutex);
       pthread_mutex_unlock(&mutex);
 #endif
-      if( i >= points->num ) 
+#if NR_CORES > 1
+      seen_generation = baremetal_wait_next_generation(seen_generation);
+      int current_i = __atomic_load_n(&streamcluster_pspeedy_i, __ATOMIC_ACQUIRE);
+#else
+      int current_i = i;
+#endif
+      if( current_i >= points->num ) 
         break;
         
       for( int k = k1; k < k2; k++ ) {
-        float distance = dist(points->p[i],points->p[k],points->dim);
+        float distance = dist(points->p[current_i],points->p[k],points->dim, pid);
         if( distance*points->p[k].weight < points->p[k].cost ) {
           points->p[k].cost = distance * points->p[k].weight;
-          points->p[k].assign=i;
+          points->p[k].assign=current_i;
         }
       }
 #ifdef ENABLE_THREADS
       pthread_barrier_wait(barrier);
       pthread_barrier_wait(barrier);
+#endif
+#if NR_CORES > 1
+      sync_barrier();
+      sync_barrier();
 #endif
     } // while
   } // if not master thread
@@ -322,7 +424,11 @@ float pspeedy(Points *points, float z, long *kcenter, int pid, pthread_barrier_t
 #ifdef ENABLE_THREADS
   pthread_mutex_lock(&mutex);
 #endif
+#if NR_CORES > 1
+        baremetal_publish_center(i);
+#else
         open = true;
+#endif
 
 #ifdef ENABLE_THREADS
   pthread_mutex_unlock(&mutex);
@@ -330,7 +436,7 @@ float pspeedy(Points *points, float z, long *kcenter, int pid, pthread_barrier_t
 #endif
 
         for( int k = k1; k < k2; k++ )  {
-          float distance = dist(points->p[i],points->p[k],points->dim );
+          float distance = dist(points->p[i],points->p[k],points->dim, pid);
           if( distance*points->p[k].weight < points->p[k].cost )  {
             points->p[k].cost = distance * points->p[k].weight;
             points->p[k].assign=i;
@@ -341,26 +447,44 @@ float pspeedy(Points *points, float z, long *kcenter, int pid, pthread_barrier_t
 #ifdef ENABLE_THREADS
         pthread_barrier_wait(barrier);
 #endif
+#if NR_CORES > 1
+        sync_barrier();
+#endif
+#if NR_CORES == 1
         open = false;
+#endif
 
 #ifdef ENABLE_THREADS
         pthread_barrier_wait(barrier);
 #endif
-      }
-    }
+#if NR_CORES > 1
+        sync_barrier();
+#endif
+      } // if( to_open )
+    } // for(i = 1; i < points->num; i++ )  {
 #ifdef ENABLE_THREADS
     pthread_mutex_lock(&mutex);
 #endif
+#if NR_CORES > 1
+    baremetal_publish_center((int)points->num);
+#else
     open = true;
+#endif
 #ifdef ENABLE_THREADS
     pthread_mutex_unlock(&mutex);
     pthread_cond_broadcast(&cond);
 #endif
-  }
+  } // else core 0 master thread
+
 #ifdef ENABLE_THREADS
   pthread_barrier_wait(barrier);
 #endif
+#if NR_CORES > 1
+  sync_barrier();
+#endif
+#if NR_CORES == 1
   open = false;
+#endif
   double mytotal = 0;
   for( int k = k1; k < k2; k++ )  {
     mytotal += points->p[k].cost;
@@ -369,15 +493,28 @@ float pspeedy(Points *points, float z, long *kcenter, int pid, pthread_barrier_t
 #ifdef ENABLE_THREADS
   pthread_barrier_wait(barrier);
 #endif
+#if NR_CORES > 1
+  sync_barrier();
+#endif
+  
   // aggregate costs from each thread
   if( pid == 0 ) {
     totalcost=z*(*kcenter);
     for( int i = 0; i < nproc; i++ ) {
       totalcost += costs[i];
     }
+#if NR_CORES > 1
+    __atomic_store_n(&streamcluster_pspeedy_kcenter, *kcenter, __ATOMIC_RELEASE);
+    __atomic_store(&streamcluster_pspeedy_cost, &totalcost, __ATOMIC_RELEASE);
+#endif
   }
 #ifdef ENABLE_THREADS
   pthread_barrier_wait(barrier);
+#endif
+#if NR_CORES > 1
+  sync_barrier();
+  *kcenter = __atomic_load_n(&streamcluster_pspeedy_kcenter, __ATOMIC_ACQUIRE);
+  __atomic_load(&streamcluster_pspeedy_cost, &totalcost, __ATOMIC_ACQUIRE);
 #endif
 
   return(totalcost);
@@ -415,6 +552,9 @@ double pgain(long x, Points *points, double z, long int *numcenters, int pid, pt
 #ifdef ENABLE_THREADS
   pthread_barrier_wait(barrier);
 #endif
+#if NR_CORES > 1
+  sync_barrier();
+#endif
 
   //my block
   long bsize = points->num/nproc;
@@ -448,10 +588,18 @@ double pgain(long x, Points *points, double z, long int *numcenters, int pid, pt
     memset(work_mem, 0, stride*(nproc+1)*sizeof(double));
     gl_cost_of_opening_x = 0;
     gl_number_of_centers_to_close = 0;
+#if NR_CORES > 1
+    double zero_cost = 0.0;
+    __atomic_store(&streamcluster_pgain_cost_of_opening, &zero_cost, __ATOMIC_RELEASE);
+    __atomic_store_n(&streamcluster_pgain_centers_to_close, 0, __ATOMIC_RELEASE);
+#endif
   }
 
 #ifdef ENABLE_THREADS
   pthread_barrier_wait(barrier);
+#endif
+#if NR_CORES > 1
+  sync_barrier();
 #endif
   /*For each center, we have a *lower* field that indicates
     how much we will save by closing the center.
@@ -471,6 +619,9 @@ double pgain(long x, Points *points, double z, long int *numcenters, int pid, pt
 #ifdef ENABLE_THREADS
   pthread_barrier_wait(barrier);
 #endif
+#if NR_CORES > 1
+  sync_barrier();
+#endif
 
   if( pid == 0 ) {
     int accum = 0;
@@ -484,6 +635,9 @@ double pgain(long x, Points *points, double z, long int *numcenters, int pid, pt
 
 #ifdef ENABLE_THREADS
   pthread_barrier_wait(barrier);
+#endif
+#if NR_CORES > 1
+  sync_barrier();
 #endif
 
   for( int i = k1; i < k2; i++ ) {
@@ -505,6 +659,9 @@ double pgain(long x, Points *points, double z, long int *numcenters, int pid, pt
 #ifdef ENABLE_THREADS
   pthread_barrier_wait(barrier);
 #endif
+#if NR_CORES > 1
+  sync_barrier();
+#endif
 
   // printf("after memset: %d\n", (int)work_mem[pid*stride]);
 
@@ -516,7 +673,7 @@ double pgain(long x, Points *points, double z, long int *numcenters, int pid, pt
   // printf("----------------------------------------------------\n");
   for ( i = k1; i < k2; i++ ) {
     
-    float x_cost = dist(points->p[i], points->p[x], points->dim) * points->p[i].weight;
+    float x_cost = dist(points->p[i], points->p[x], points->dim, pid) * points->p[i].weight;
     float current_cost = points->p[i].cost;
     // printf("dim = %d x_cost = %f current_cost = %f\n" , points->dim, x_cost, current_cost);
 
@@ -546,6 +703,9 @@ double pgain(long x, Points *points, double z, long int *numcenters, int pid, pt
 
 #ifdef ENABLE_THREADS
   pthread_barrier_wait(barrier);
+#endif
+#if NR_CORES > 1
+  sync_barrier();
 #endif
 
   // at this time, we can calculate the cost of opening a center
@@ -579,6 +739,9 @@ double pgain(long x, Points *points, double z, long int *numcenters, int pid, pt
 #ifdef ENABLE_THREADS
   pthread_barrier_wait(barrier);
 #endif
+#if NR_CORES > 1
+  sync_barrier();
+#endif
   //  printf("thread %d cost complete\n",pid);
 
   if( pid==0 ) {
@@ -588,14 +751,26 @@ double pgain(long x, Points *points, double z, long int *numcenters, int pid, pt
       gl_number_of_centers_to_close += (int)work_mem[p*stride + K];
       gl_cost_of_opening_x += work_mem[p*stride+K+1];
     }
+#if NR_CORES > 1
+    __atomic_store(&streamcluster_pgain_cost_of_opening, &gl_cost_of_opening_x, __ATOMIC_RELEASE);
+    __atomic_store_n(&streamcluster_pgain_centers_to_close, gl_number_of_centers_to_close, __ATOMIC_RELEASE);
+#endif
   }
 #ifdef ENABLE_THREADS
   pthread_barrier_wait(barrier);
 #endif
+#if NR_CORES > 1
+  sync_barrier();
+  __atomic_load(&streamcluster_pgain_cost_of_opening, &gl_cost_of_opening_x, __ATOMIC_ACQUIRE);
+  gl_number_of_centers_to_close = __atomic_load_n(&streamcluster_pgain_centers_to_close, __ATOMIC_ACQUIRE);
+#endif
+
   // Now, check whether opening x would save cost; if so, do it, and
   // otherwise do nothing
 
-  if ( gl_cost_of_opening_x < 0 ) {
+  bool opening_x = gl_cost_of_opening_x < 0;
+
+  if ( opening_x ) {
     // printf("Opening a new center at %d would save cost %lf by closing %d centers\n", x, gl_cost_of_opening_x, (int)gl_number_of_centers_to_close);
     //  we'd save money by opening x; we'll do it
     for ( int i = k1; i < k2; i++ ) {
@@ -604,7 +779,7 @@ double pgain(long x, Points *points, double z, long int *numcenters, int pid, pt
         // Either i's median (which may be i itself) is closing,
         // or i is closer to x than to its current median
         points->p[i].cost = points->p[i].weight *
-          dist(points->p[i], points->p[x], points->dim );
+          dist(points->p[i], points->p[x], points->dim, pid);
         points->p[i].assign = x;
       }
     }
@@ -622,11 +797,20 @@ double pgain(long x, Points *points, double z, long int *numcenters, int pid, pt
     }
   }
   else {
-    if( pid==0 )
+    if( pid==0 ) {
       gl_cost_of_opening_x = 0;  // the value we'll return
+#if NR_CORES > 1
+      double zero_cost = 0.0;
+      __atomic_store(&streamcluster_pgain_cost_of_opening, &zero_cost, __ATOMIC_RELEASE);
+#endif
+    }
   }
 #ifdef ENABLE_THREADS
   pthread_barrier_wait(barrier);
+#endif
+#if NR_CORES > 1
+  sync_barrier();
+  __atomic_load(&streamcluster_pgain_cost_of_opening, &gl_cost_of_opening_x, __ATOMIC_ACQUIRE);
 #endif
 
   return -gl_cost_of_opening_x;
@@ -646,14 +830,28 @@ double pgain(long x, Points *points, double z, long int *numcenters, int pid, pt
 #ifdef TBB_VERSION
 
 #else //!TBB_VERSION
- float pFL(Points *points, int *feasible, int numfeasible,
+float pFL(Points *points, int *feasible, int numfeasible,
     float z, long *k, double cost, long iter, float e,
     int pid, pthread_barrier_t* barrier)
 {
-  // printf("----------------pFL----------------\n");
+
+#ifdef DEBUG
+  for (int c=0; c<nproc; c++) {
+    sync_barrier();
+    if (pid == c) {
+      printf("----------------pFL thread: %d----------------\n", pid);
+    }
+    sync_barrier();
+  }
+#endif
+
 #ifdef ENABLE_THREADS
   pthread_barrier_wait(barrier);
 #endif
+#if NR_CORES > 1
+  sync_barrier();
+#endif
+
   long i;
   long x;
   double change;
@@ -661,27 +859,51 @@ double pgain(long x, Points *points, double z, long int *numcenters, int pid, pt
   change = cost;
   /* continue until we run iter iterations without improvement */
   /* stop instead if improvement is less than e */
-  // printf("z=%f cost=%lf iter=%d\n", z, cost, iter);
+#ifdef DEBUG
+  for (int c=0; c<nproc; c++) {
+    sync_barrier();
+    if (pid == c) {
+      printf("pFL: pid=%d numfeasible=%d z=%f cost=%lf iter=%ld k=%ld\n", pid, numfeasible, z, cost, iter, *k);
+    }
+    sync_barrier();
+  }
+#endif
   while (change/cost > 1.0*e) {
-    
-    // printf("metric:%lf ref:%lf\n",change/cost, 1.0*e);
     change = 0.0;
-    /* randomize order in which centers are considered */
 
+    /* randomize order in which centers are considered */
     if( pid == 0 ) {
       intshuffle(feasible, numfeasible);
     }
 #ifdef ENABLE_THREADS
     pthread_barrier_wait(barrier);
 #endif
+#if NR_CORES > 1
+  sync_barrier();
+#endif
+
     for (i=0;i<iter;i++) {
       x = i%numfeasible;
       // printf("ITER:%d considering point %d...\n", i, feasible[x]);
       change += pgain(feasible[x], points, z, k, pid, barrier);
     }
     cost -= change;
+
+#ifdef DEBUG
+    for (int c=0; c<nproc; c++) {
+      sync_barrier();
+      if (pid == c) {
+        printf("pgain: pid=%d change=%lf cost=%lf k=%ld\n", pid, change, cost, *k);
+      }
+      sync_barrier();
+    }
+#endif
+
 #ifdef ENABLE_THREADS
     pthread_barrier_wait(barrier);
+#endif
+#if NR_CORES > 1
+  sync_barrier();
 #endif
   }
   return(cost);
@@ -782,14 +1004,25 @@ int selectfeasible_fast(Points *points, int **feasible, int kmin, int pid, pthre
 #else //!TBB_VERSION
 
 static double hizs[nproc];
+static double global_hiz;
 
 /* compute approximate kmedian on the points */
 float pkmedian(Points *points, long kmin, long kmax, long* kfinal,
          int pid, pthread_barrier_t* barrier )
 {
-  // printf("pkmedian pthread %d begin\n",pid);
-  
-  start_timer();
+  for (int c=0; c<nproc; c++) {
+    sync_barrier();
+    if (pid == c) {
+#if NR_CORES > 1
+      baremetal_print_lock();
+#endif
+      printf("----------------pkmedian thread: %d----------------\n", pid);
+#if NR_CORES > 1
+      baremetal_print_unlock();
+#endif
+    }
+    sync_barrier();
+  }
   
   int i;
   double cost;
@@ -811,23 +1044,40 @@ float pkmedian(Points *points, long kmin, long kmax, long* kfinal,
 #ifdef ENABLE_THREADS
   pthread_barrier_wait(barrier);
 #endif
+#if NR_CORES > 1
+  sync_barrier();
+#endif
+  if (pid == 0) 
+    start_timer();
 
   double myhiz = 0;
   for (long kk=k1;kk < k2; kk++ ) {
     myhiz += dist(points->p[kk], points->p[0],
-          ptDimension )*points->p[kk].weight;
+          ptDimension, pid)*points->p[kk].weight;
   }
   hizs[pid] = myhiz;
 
+// Accumulate hizs from all threads to get the total hiz
 #ifdef ENABLE_THREADS
   pthread_barrier_wait(barrier);
 #endif
+# if NR_CORES > 1
+  sync_barrier();
+# endif
 
-  for( int i = 0; i < nproc; i++ )   {
-    hiz += hizs[i];
+  if (pid == 0) {
+    for( int i = 0; i < nproc; i++ )   {
+      hiz += hizs[i];
+    }
+    global_hiz = hiz;
   }
 
-  loz=0.0; 
+# if NR_CORES > 1
+  sync_barrier();
+# endif
+  hiz = global_hiz;
+
+  loz=0.0;
   z = (hiz+loz)/2.0;
   /* NEW: Check whether more centers than points! */
   if (points->num <= kmax) {
@@ -846,8 +1096,28 @@ float pkmedian(Points *points, long kmin, long kmax, long* kfinal,
   if( pid == 0 )
     shuffle(points);
 
+#ifdef DEBUG
+  for (int c=0; c<nproc; c++) {
+    sync_barrier();
+    if (pid == c) {
+      printf("pspeedy pid:%d cost=%lf k:%ld\n", pid, cost, k);  
+    }
+    sync_barrier();
+  }
+#endif
+
   cost = pspeedy(points, z, &k, pid, barrier);
-  
+
+#ifdef DEBUG
+  for (int c=0; c<nproc; c++) {
+    sync_barrier();
+    if (pid == c) {
+      printf("pspeedy pid:%d cost=%lf k:%ld\n", pid, cost, k);
+    }
+    sync_barrier();
+  }
+#endif
+
   i=0;
 
   /* give speedy SP chances to get at least kmin/2 facilities */
@@ -856,6 +1126,16 @@ float pkmedian(Points *points, long kmin, long kmax, long* kfinal,
     i++;
   }
 
+#ifdef DEBUG
+  for (int c=0; c<nproc; c++) {
+    sync_barrier();
+    if (pid == c) {
+      printf("pspeedy pid:%d cost=%lf k:%ld\n", pid, cost, k);
+    }
+    sync_barrier();
+  }
+#endif
+
   /* if still not enough facilities, assume z is too high */
   while (k < kmin) {
     if (i >= SP) {hiz=z; z=(hiz+loz)/2.0; i=0;}
@@ -863,6 +1143,16 @@ float pkmedian(Points *points, long kmin, long kmax, long* kfinal,
     cost = pspeedy(points, z, &k, pid, barrier);
     i++;
   }
+
+#ifdef DEBUG
+  for (int c=0; c<nproc; c++) {
+    sync_barrier();
+    if (pid == c) {
+      printf("pspeedy pid:%d cost=%lf k:%ld\n", pid, cost, k);
+    }
+    sync_barrier();
+  }
+#endif
 
   // printf("pspeedy...%lf, num open centers=%d\n", cost, k);
 
@@ -881,16 +1171,57 @@ float pkmedian(Points *points, long kmin, long kmax, long* kfinal,
 #ifdef ENABLE_THREADS
   pthread_barrier_wait(barrier);
 #endif
+# if NR_CORES > 1
+  sync_barrier();
+# endif
 
-  stop_timer();
-  printf("pspeedy [sw-cycles]: %ld cnt: %d\n", get_timer(), cnt_dist);
-  cnt_dist=0;
+  if (pid == 0) {
+    stop_timer();
+    printf("pspeedy [sw-cycles]: %ld cnt: %d\n", get_timer(), cnt_dist_total());
+    cnt_dist_reset_all();
+  }
+#if NR_CORES > 1
+  sync_barrier();
+#endif
 
-  start_timer();
+#ifdef DEBUG
+  for (int c=0; c<nproc; c++) {
+    sync_barrier();
+    if (pid == c) {
+      printf("Finished pspeedy: pid=%d numfeasible=%d z=%f cost=%lf\n", pid, numfeasible, z, cost);
+    }
+    sync_barrier();
+  }
+#endif
+  
+  if (pid == 0) 
+    start_timer();
+
   while(1) {
+
+#ifdef DEBUG
+    for (int c=0; c<nproc; c++) {
+      sync_barrier();
+      if (pid == c) {
+        printf("while iteration: pid=%d numfeasible=%d z=%f cost=%lf k=%ld\n", pid, numfeasible, z, cost, k);
+      }
+      sync_barrier();
+    }
+#endif
+
     /* first get a rough estimate on the FL solution */
     cost = pFL(points, feasible, numfeasible,
                 z, &k, cost, (long)(ITER*kmax*log((double)kmax)), 0.1, pid, barrier);
+
+#ifdef DEBUG
+    for (int c=0; c<nproc; c++) {
+      sync_barrier();
+      if (pid == c) {
+        printf("pFL****: pid=%d numfeasible=%d z=%f cost=%lf k=%ld\n", pid, numfeasible, z, cost, k);
+      }
+      sync_barrier();
+    }
+#endif
 
     /* if number of centers seems good, try a more accurate FL */
     if (((k <= (1.1)*kmax)&&(k >= (0.9)*kmin))|| ((k <= kmax+2)&&(k >= kmin-2))) {
@@ -924,16 +1255,33 @@ float pkmedian(Points *points, long kmin, long kmax, long* kfinal,
 #ifdef ENABLE_THREADS
     pthread_barrier_wait(barrier);
 #endif
+#if NR_CORES > 1
+    sync_barrier();
+#endif
   }
-  stop_timer();
+#ifdef ENABLE_THREADS
+  pthread_barrier_wait(barrier);
+#endif
+#if NR_CORES > 1
+  sync_barrier();
+#endif
+  if (pid == 0) {
+    stop_timer();
 
-  int64_t cycles = get_timer();
-  int64_t total_ops = cnt_dist * DIM * 2; // each distance computation involves 2 floating point ops (sub and mac)
-  int64_t ops_per_cycle = 2 * NR_LANES * NR_CLUSTERS; // 2x 32-bit ops / lane
-  int64_t theoretical_cycles = (total_ops + ops_per_cycle - 1) / ops_per_cycle; // ceiling division
-  float utilization = 100.0 * (float) theoretical_cycles / (float)cycles;
-  printf("pFL [sw-cycles]: %ld cnt:%d util:%f%%\n", cycles, cnt_dist, utilization);
-  cnt_dist=0;
+    int64_t cycles = get_timer();
+    int total_dist = cnt_dist_total();
+    int64_t total_ops = total_dist * DIM * 2; // each distance computation involves 2 floating point ops (sub and mac)
+    int64_t ops_per_cycle = 2 * NR_LANES * NR_CLUSTERS * NR_CORES; // 2x 32-bit ops / lane
+    int64_t theoretical_cycles = (total_ops + ops_per_cycle - 1) / ops_per_cycle; // ceiling division
+    float utilization = 100.0 * (float) theoretical_cycles / (float)cycles;
+    if (pid == 0) {
+      printf("pFL [sw-cycles]: %ld cnt:%d util:%f%%\n", cycles, total_dist, utilization);
+      cnt_dist_reset_all();
+    }
+  }
+#if NR_CORES > 1
+  sync_barrier();
+#endif
 
   //clean up...
   if( pid==0 ) {
@@ -1024,32 +1372,39 @@ void* localSearchSub(void* arg_) {
 #else //!TBB_VERSION
 
 pkmedian_arg_t arg[nproc];
-void localSearch( Points* points, long kmin, long kmax, long* kfinal ) {
+void localSearch( Points* points, long kmin, long kmax, long* kfinal, int hart_id) {
     pthread_barrier_t barrier;
     // pthread_t* threads = new pthread_t[nproc];
 
 #ifdef ENABLE_THREADS
     pthread_barrier_init(&barrier,NULL,nproc);
 #endif
-    for( int i = 0; i < nproc; i++ ) {
-      arg[i].points = points;
-      arg[i].kmin = kmin;
-      arg[i].kmax = kmax;
-      arg[i].pid = i;
-      arg[i].kfinal = kfinal;
 
-      arg[i].barrier = &barrier;
-#ifdef ENABLE_THREADS
-      pthread_create(threads+i,NULL,localSearchSub,(void*)&arg[i]);
-#else
-      localSearchSub(&arg[0]);
+#if NR_CORES > 1
+    sync_barrier();
 #endif
-    }
+
+    arg[hart_id].points = points;
+    arg[hart_id].kmin = kmin;
+    arg[hart_id].kmax = kmax;
+    arg[hart_id].pid = hart_id;
+    arg[hart_id].kfinal = kfinal;
+
+    arg[hart_id].barrier = &barrier;
+#ifdef ENABLE_THREADS
+    pthread_create(threads+i,NULL,localSearchSub,(void*)&arg[i]);
+#else
+    localSearchSub(&arg[hart_id]);
+#endif
 
 #ifdef ENABLE_THREADS
     for ( int i = 0; i < nproc; i++) {
       pthread_join(threads[i],NULL);
     }
+#endif
+
+#if NR_CORES > 1
+    sync_barrier();
 #endif
 
     // delete[] threads;
@@ -1080,124 +1435,143 @@ void outcenterIDs( Points* centers, long* centerIDs) {
   }
 }
 
+float* centerBlock;
+long* centerIDs;
+Points points, centers;
+long IDoffset = 0;
+long kfinal;
+
 void streamCluster(long kmin, long kmax, int dim,
-        long chunksize, long centersize)
+        long chunksize, long centersize, int hart_id)
 {
 
-#ifdef TBB_VERSION
-  float* block = (float*)memoryFloat.allocate( chunksize*dim*sizeof(float) );
-  float* centerBlock = (float*)memoryFloat.allocate(centersize*dim*sizeof(float) );
-  long* centerIDs = (long*)memoryLong.allocate(centersize*dim*sizeof(long));
-#else
-  // float* block = (float*)baremetal_malloc( chunksize*dim*sizeof(float) );
-  float* centerBlock = (float*)baremetal_malloc(centersize*dim*sizeof(float) );
-  long* centerIDs = (long*)baremetal_malloc(centersize*dim*sizeof(long));
+  if (hart_id == 0) {
+  #ifdef TBB_VERSION
+    float* block = (float*)memoryFloat.allocate( chunksize*dim*sizeof(float) );
+    centerBlock = (float*)memoryFloat.allocate(centersize*dim*sizeof(float) );
+    centerIDs = (long*)memoryLong.allocate(centersize*dim*sizeof(long));
+  #else
+    centerBlock = (float*)baremetal_malloc(centersize*dim*sizeof(float) );
+    centerIDs = (long*)baremetal_malloc(centersize*dim*sizeof(long));
+  #endif
+
+    // Initialize points
+    points.dim = dim;
+    points.num = chunksize;
+    points.p =
+  #ifdef TBB_VERSION
+      (Point *)memoryPoint.allocate(chunksize*sizeof(Point), NULL);
+  #else
+      (Point *)baremetal_malloc(chunksize*sizeof(Point));
+  #endif
+
+    for( int i = 0; i < chunksize; i++ ) {
+      points.p[i].coord = &block[i*dim];
+    }
+    
+    // Initialize centers
+    centers.dim = dim;
+    centers.p =
+  #ifdef TBB_VERSION
+      (Point *)memoryPoint.allocate(centersize*sizeof(Point), NULL);
+  #else
+      (Point *)baremetal_malloc(centersize*sizeof(Point));
+  #endif
+    centers.num = 0;
+
+    for( int i = 0; i< centersize; i++ ) {
+      centers.p[i].coord = &centerBlock[i*dim];
+      centers.p[i].weight = 1.0;
+    }
+  } // end of if hart_id == 0
+
+#if NR_CORES > 1
+  sync_barrier();
 #endif
-
-  Points points;
-  points.dim = dim;
-  points.num = chunksize;
-  points.p =
-#ifdef TBB_VERSION
-    (Point *)memoryPoint.allocate(chunksize*sizeof(Point), NULL);
-#else
-    (Point *)baremetal_malloc(chunksize*sizeof(Point));
-#endif
-
-  for( int i = 0; i < chunksize; i++ ) {
-    points.p[i].coord = &block[i*dim];
-  }
-
-  Points centers;
-  centers.dim = dim;
-  centers.p =
-#ifdef TBB_VERSION
-    (Point *)memoryPoint.allocate(centersize*sizeof(Point), NULL);
-#else
-    (Point *)baremetal_malloc(centersize*sizeof(Point));
-#endif
-  centers.num = 0;
-
-  for( int i = 0; i< centersize; i++ ) {
-    centers.p[i].coord = &centerBlock[i*dim];
-    centers.p[i].weight = 1.0;
-  }
-
-  long IDoffset = 0;
-  long kfinal;
 
   while(1) {
 
-    for( int i = 0; i < points.num; i++ ) {
-      points.p[i].weight = 1.0;
-    }
+    if (hart_id == 0) {
+      for( int i = 0; i < points.num; i++ ) {
+        points.p[i].weight = 1.0;
+      }
 
 #ifdef TBB_VERSION
-    switch_membership = (bool*)memoryBool.allocate(points.num*sizeof(bool), NULL);
-    is_center = (bool*)calloc(points.num,sizeof(bool));
-    center_table = (int*)memoryInt.allocate(points.num*sizeof(int));
+      switch_membership = (bool*)memoryBool.allocate(points.num*sizeof(bool), NULL);
+      is_center = (bool*)calloc(points.num,sizeof(bool));
+      center_table = (int*)memoryInt.allocate(points.num*sizeof(int));
 #else
-    switch_membership = (bool*)baremetal_malloc(points.num*sizeof(bool));
-    is_center = (bool*)baremetal_malloc(points.num*sizeof(bool));
-    memset(is_center, 0, points.num*sizeof(bool));
-    center_table = (int*)baremetal_malloc(points.num*sizeof(int));
+      switch_membership = (bool*)baremetal_malloc(points.num*sizeof(bool));
+      is_center = (bool*)baremetal_malloc(points.num*sizeof(bool));
+      memset(is_center, 0, points.num*sizeof(bool));
+      center_table = (int*)baremetal_malloc(points.num*sizeof(int));
 #endif
-    
-    localSearch(&points, kmin, kmax, &kfinal); // parallel
 
-    start_timer();
-    contcenters(&points); /* sequential */
+    } // end of if hart_id == 0
+      
+    localSearch(&points, kmin, kmax, &kfinal, hart_id); // parallel
 
-    if( kfinal + centers.num > centersize ) {
-      // here we don't handle the situation where # of centers gets too large.
-      printf("oops! no more space for centers\n");
-      exit(1);
-    }
+    if (hart_id == 0) {
+      start_timer();
+      contcenters(&points); /* sequential */
 
-    copycenters(&points, &centers, centerIDs, IDoffset); /* sequential */
-    IDoffset += chunksize;
+      if( kfinal + centers.num > centersize ) {
+        // here we don't handle the situation where # of centers gets too large.
+        printf("oops! no more space for centers\n");
+        exit(1);
+      }
+
+      copycenters(&points, &centers, centerIDs, IDoffset); /* sequential */
+      IDoffset += chunksize;
 
 #ifdef TBB_VERSION
-    memoryBool.deallocate(switch_membership, sizeof(bool));
-    free(is_center);
-    memoryInt.deallocate(center_table, sizeof(int));
+      memoryBool.deallocate(switch_membership, sizeof(bool));
+      free(is_center);
+      memoryInt.deallocate(center_table, sizeof(int));
 #else
 #endif
 
-    // TODO: add check to exit loop when no more data to read
-    // For now just break
-    break;
+      stop_timer();
+      printf("cont & copy centers [sw-cycles]: %ld cnt:%d\n", get_timer(), cnt_dist_total());
 
-    stop_timer();
-    printf("cont & copy centers [sw-cycles]: %ld cnt:%d\n", get_timer(), cnt_dist);
-
-  }
+      // TODO: add check to exit loop when no more data to read
+      // For now just break
+      break;
+    }
+  } // end of while(1)
 
   //finally cluster all temp centers
+  if (hart_id == 0) {
 #ifdef TBB_VERSION
-  switch_membership = (bool*)memoryBool.allocate(centers.num*sizeof(bool));
-  is_center = (bool*)calloc(centers.num,sizeof(bool));
-  center_table = (int*)memoryInt.allocate(centers.num*sizeof(int));
+    switch_membership = (bool*)memoryBool.allocate(centers.num*sizeof(bool));
+    is_center = (bool*)calloc(centers.num,sizeof(bool));
+    center_table = (int*)memoryInt.allocate(centers.num*sizeof(int));
 #else
-  switch_membership = (bool*)baremetal_malloc(centers.num*sizeof(bool));
-  is_center = (bool*)baremetal_malloc(centers.num*sizeof(bool));
-  memset(is_center, 0, centers.num*sizeof(bool));
-  center_table = (int*)baremetal_malloc(centers.num*sizeof(int));
+    switch_membership = (bool*)baremetal_malloc(centers.num*sizeof(bool));
+    is_center = (bool*)baremetal_malloc(centers.num*sizeof(bool));
+    memset(is_center, 0, centers.num*sizeof(bool));
+    center_table = (int*)baremetal_malloc(centers.num*sizeof(int));
 #endif
+  } // end of if hart_id == 0
 
-  localSearch( &centers, kmin, kmax ,&kfinal ); // parallel
+  localSearch( &centers, kmin, kmax ,&kfinal, hart_id ); // parallel
 
-  start_timer();
-  contcenters(&centers);
-  stop_timer();
-  printf("cont centers [sw-cycles]: %ld cnt:%d\n", get_timer(), cnt_dist);
-
+  if (hart_id == 0) {
+    start_timer();
+    contcenters(&centers);
+    stop_timer();
+    printf("cont centers [sw-cycles]: %ld cnt:%d\n", get_timer(), cnt_dist_total());    
 #ifdef PRINT_RESULT
-  outcenterIDs( &centers, centerIDs);
+    outcenterIDs( &centers, centerIDs);
+#endif
+  }
+
+#if NR_CORES > 1
+  sync_barrier();
 #endif
 }
 
-int main()
+int main(int hart_id)
 {
   long kmin, kmax, n, chunksize, clustersize;
   int dim;
@@ -1222,8 +1596,10 @@ int main()
   chunksize = CHUNKSIZE;
   clustersize = CLUSTERSIZE;
 
-  printf("kmin = %ld, kmax = %ld, dim = %d, n = %ld, chunksize = %ld, clustersize = %ld\n",
-         kmin, kmax, dim, n, chunksize, clustersize);
+  if (hart_id == 0) {
+    printf("kmin = %ld, kmax = %ld, dim = %d, n = %ld, chunksize = %ld, clustersize = %ld\n",
+           kmin, kmax, dim, n, chunksize, clustersize);
+  }
 
 #ifdef TBB_VERSION
   fprintf(stderr,"TBB version. Number of divisions: %d\n",NUM_DIVISIONS);
@@ -1236,11 +1612,31 @@ int main()
   __parsec_roi_begin();
 #endif
 
-  printf("Running StreamCluster with %d threads L=%d C=%d\n", nproc, NR_LANES, NR_CLUSTERS);
+  if (hart_id == 0) {
+    printf("Running StreamCluster with %d cores L=%d C=%d\n", nproc, NR_LANES, NR_CLUSTERS);
+  }
 
-  streamCluster(kmin, kmax, dim, chunksize, clustersize);
+#if NR_CORES > 1
+  sync_barrier();
+#endif
 
-  printf("Number of distance calculations: %d\n", cnt_dist);
+#if NR_CORES > 1
+  if (hart_id == 0) {
+    __atomic_store_n(&streamcluster_pspeedy_cond_generation, 0, __ATOMIC_RELEASE);
+    __atomic_store_n(&streamcluster_pspeedy_i, 0, __ATOMIC_RELEASE);
+    __atomic_store_n(&streamcluster_printf_lock, 0, __ATOMIC_RELEASE);
+    __atomic_store_n(&streamcluster_pspeedy_kcenter, 0L, __ATOMIC_RELEASE);
+    double zero_cost = 0.0;
+    __atomic_store(&streamcluster_pspeedy_cost, &zero_cost, __ATOMIC_RELEASE);
+  }
+  sync_barrier();
+#endif
+
+  streamCluster(kmin, kmax, dim, chunksize, clustersize, hart_id);
+
+  if (hart_id == 0) {
+    printf("Number of distance calculations: %d\n", cnt_dist_total());
+  }
 
 #ifdef ENABLE_PARSEC_HOOKS
   __parsec_roi_end();
