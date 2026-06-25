@@ -1009,7 +1009,7 @@ float pkmedian(Points *points, long kmin, long kmax, long* kfinal,
     printf("pspeedy [sw-cycles]: %ld cnt: %d\n", get_timer(), cnt_dist_total());
     cnt_dist_reset_all();
   }
-  sync_barrier();
+  flush_sync_barrier();
 
 #ifdef DEBUG
     printf_("Finished pspeedy: pid=%d numfeasible=%d z=%f cost=%lf\n", pid, numfeasible, z, cost);
@@ -1088,7 +1088,7 @@ float pkmedian(Points *points, long kmin, long kmax, long* kfinal,
       cnt_dist_reset_all();
     }
   }
-  sync_barrier();
+  flush_sync_barrier();
   
   //clean up...
   if( pid==0 ) {
@@ -1348,7 +1348,7 @@ void streamCluster(long kmin, long kmax, int dim,
     if (hart_id == 0) {
       printf("cont & copy centers [sw-cycles]: %ld cnt:%d\n", get_timer(), cnt_dist_total());
     }
-    sync_barrier();
+    flush_sync_barrier();
     break;
   } // end of while(1)
 
@@ -1389,7 +1389,7 @@ void streamCluster(long kmin, long kmax, int dim,
   if (hart_id == 0) {
     printf("cont centers [sw-cycles]: %ld cnt:%d\n", get_timer(), cnt_dist_total());    
   }
-  sync_barrier();
+  flush_sync_barrier();
 }
 
 int main(int hart_id)
@@ -1454,7 +1454,7 @@ int main(int hart_id)
   if (hart_id == 0) {
     printf("Number of distance calculations: %d\n", cnt_dist_total());
   }
-  sync_barrier();
+  flush_sync_barrier();
 
 #ifdef ENABLE_PARSEC_HOOKS
   __parsec_roi_end();
