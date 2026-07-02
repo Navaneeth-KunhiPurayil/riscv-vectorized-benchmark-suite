@@ -45,8 +45,6 @@
 unsigned long swap_cost_vector_calls[NR_CORES] = {0};
 #endif
 
-unsigned long canneal_atomic_ptr_next_slot = 0;
-
 netlist_elem::netlist_elem()
 :present_loc(NULL)//start with the present_loc as nothing at all.  Filled in later by the netlist
 {

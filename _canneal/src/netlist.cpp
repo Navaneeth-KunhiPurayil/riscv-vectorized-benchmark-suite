@@ -222,7 +222,6 @@ void netlist::init(bool use_compiled_data)
 	// 1. Initialize location grid + element defaults
 	printf("Initializing netlist with %lu elements, max_x=%lu, max_y=%lu\n",
 	       _num_elements, _max_x, _max_y);
-	canneal_atomic_ptr_next_slot = 0;
 	unsigned i_elem = 0;
 	for (int x = 0; x < (int)_max_x; x++) {
 		for (int y = 0; y < (int)_max_y; y++) {

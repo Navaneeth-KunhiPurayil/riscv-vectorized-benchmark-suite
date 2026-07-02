@@ -100,8 +100,7 @@
 #include <stddef.h>
 #include <assert.h>
 
-extern "C" unsigned long canneal_atomic_ptr_pool[];
-extern unsigned long canneal_atomic_ptr_next_slot;
+#include "malloc.h"
 
 #ifdef ATOMICPTR_USE_ATOMICS
 template <typename T>
@@ -138,7 +137,7 @@ class AtomicPtr {
     static const T *ATOMIC_NULL;
 
     inline ATOMIC_TYPE *AllocAtomicWord() {
-      return (ATOMIC_TYPE *)&canneal_atomic_ptr_pool[canneal_atomic_ptr_next_slot++];
+      return (ATOMIC_TYPE *)baremetal_atomic_malloc(sizeof(ATOMIC_TYPE));
     }
 
     //helper function to set the pointer to a value (without any checks)
@@ -160,9 +159,9 @@ class AtomicPtr {
     //helper function to try to set the pointer to a value (without any checks)
     inline bool TryPrivateSet(T *x, T **y) {
       T *val;
-      bool rv;
 
 #ifdef ATOMICPTR_USE_ATOMICS
+      bool rv;
       if(!TryGet(&val)) {
         return false;
       }
@@ -185,8 +184,12 @@ class AtomicPtr {
     //regular constructor
     AtomicPtr(T *x) {
       assert(x != ATOMIC_NULL);
-      p = AllocAtomicWord();
-      *p = (ATOMIC_TYPE)x;
+      if (x == NULL) {
+        p = NULL;
+      } else {
+        p = AllocAtomicWord();
+        *p = (ATOMIC_TYPE)x;
+      }
     }
 
     //copy constructor
@@ -197,7 +200,9 @@ class AtomicPtr {
 
     inline void BindAtomicWord(T *x) {
       assert(x != ATOMIC_NULL);
-      p = AllocAtomicWord();
+      if (p == NULL) {
+        p = AllocAtomicWord();
+      }
       *p = (ATOMIC_TYPE)x;
     }
 
