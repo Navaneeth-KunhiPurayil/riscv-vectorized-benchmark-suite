@@ -5,6 +5,7 @@
 #include "nr_routines.h"
 #include "HJM_type.h"
 #include "common/riscv_util.h"
+#include "runtime.h"
 
 #define SWAP(a,b) {temp=(a);(a)=(b);(b)=temp;}
 
