@@ -125,8 +125,6 @@ void run_vector(int hart_id)
 #if NR_CORES > 1
     sync_barrier();
 #endif
-    if (hart_id == 0)
-        start_timer();
 
 #ifdef INTRINSICS
     for (int j=0; j<NUM_RUNS; j++) {
@@ -138,6 +136,9 @@ void run_vector(int hart_id)
 #if NR_CORES > 1
         sync_barrier(); // all init writes done before any t-loop reads
 #endif
+
+        if (hart_id == 0)
+            start_timer();
 
         size_t gvl;
 
@@ -190,6 +191,9 @@ void run_vector(int hart_id)
         sync_barrier(); // all init writes done before any t-loop reads
 #endif
 
+        if (hart_id == 0)
+            start_timer();
+
         size_t gvl;
 
         int aux, aux2;
@@ -222,18 +226,16 @@ void run_vector(int hart_id)
     }
 #endif // INTRINSICS
 
-    if (hart_id == 0)
-        stop_timer();
-
     if (hart_id == 0) {
+        stop_timer();
+        int64_t cycles = get_timer();
+        int64_t total_ops = (int64_t)(rows-1)*cols*3; // 3 ops/element: 2x MIN + 1x ADD
+        int64_t ops_per_cycle = 2 * NR_LANES * NR_CLUSTERS * NR_CORES; // all cores contribute
+        int64_t theoretical_cycles = (total_ops + ops_per_cycle - 1) / ops_per_cycle;
+        float utilization = 100.0 * (float)theoretical_cycles/(float)cycles;
         if(compare(cols, dst, reference)){
             printf("Verification failed!\n");
         } else {
-            int64_t cycles = get_timer();
-            int64_t total_ops = (int64_t)(rows-1)*cols*3; // 3 ops/element: 2x MIN + 1x ADD
-            int64_t ops_per_cycle = 2 * NR_LANES * NR_CLUSTERS * NR_CORES; // all cores contribute
-            int64_t theoretical_cycles = (total_ops + ops_per_cycle - 1) / ops_per_cycle;
-            float utilization = 100.0 * (float)theoretical_cycles/(float)cycles;
             printf("Verification passed!\n[sw-cycles]=%ld, util:%f%%\n", cycles, utilization);
         }
     }
