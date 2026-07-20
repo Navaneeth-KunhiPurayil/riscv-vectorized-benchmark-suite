@@ -181,12 +181,18 @@ int HJM_Swaption_Blocking(FTYPE *pdSwaptionPrice, //Output vector that will stor
       // }
     
       //now we compute the discount factor vector
-
-      for(i=0;i<=iN-1;++i){
-      	for(b=0;b<=BLOCKSIZE_AUX-1;b++){
-      	  pdDiscountingRatePath[BLOCKSIZE_AUX*i + b] = ppdHJMPath[i][0 + b];
-      	}
+      #ifdef USE_RISCV_VECTOR
+      int gvl = _MMR_VSETVL_E64M1(BLOCKSIZE_AUX);
+      for (i = 0; i <= iN - 1; ++i) {
+        _MM_STORE_f64(&pdDiscountingRatePath[BLOCKSIZE_AUX * i], _MM_LOAD_f64(&ppdHJMPath[i][0], gvl), gvl);
       }
+      #else
+      for (i = 0; i <= iN - 1; ++i) {
+        for (b = 0; b <= BLOCKSIZE_AUX - 1; b++) {
+          pdDiscountingRatePath[BLOCKSIZE_AUX * i + b] = ppdHJMPath[i][b];
+        }
+      }
+      #endif
 
       #ifdef USE_RISCV_VECTOR
             iSuccess = Discount_Factors_Blocking_vector(pdPayoffDiscountFactors, iN, dYears, pdDiscountingRatePath, BLOCKSIZE_AUX); /* 15% of the time goes here */
@@ -198,12 +204,21 @@ int HJM_Swaption_Blocking(FTYPE *pdSwaptionPrice, //Output vector that will stor
         return iSuccess;
           
       //now we compute discount factors along the swap path
+      #ifdef USE_RISCV_VECTOR
+      gvl = _MMR_VSETVL_E64M1(BLOCKSIZE_AUX);
+      for (i=0;i<=iSwapVectorLength-1;++i){
+        _MM_STORE_f64(&pdSwapRatePath[i*BLOCKSIZE_AUX],
+                      _MM_LOAD_f64(&ppdHJMPath[iSwapStartTimeIndex][i*BLOCKSIZE_AUX], gvl),
+                      gvl);
+      }
+      #else
       for (i=0;i<=iSwapVectorLength-1;++i){
         for(b=0;b<BLOCKSIZE_AUX;b++){
           pdSwapRatePath[i*BLOCKSIZE_AUX + b] = 
           ppdHJMPath[iSwapStartTimeIndex][i*BLOCKSIZE_AUX + b];
         }
       }
+      #endif
 
       #ifdef USE_RISCV_VECTOR
             iSuccess = Discount_Factors_Blocking_vector(pdSwapDiscountFactors, iSwapVectorLength, dSwapVectorYears, pdSwapRatePath, BLOCKSIZE_AUX);
@@ -217,7 +232,7 @@ int HJM_Swaption_Blocking(FTYPE *pdSwaptionPrice, //Output vector that will stor
       // Simulation
       
       #ifdef USE_RISCV_VECTOR
-        unsigned long int gvl = _MMR_VSETVL_E64M1(BLOCKSIZE_AUX);
+        gvl = _MMR_VSETVL_E64M1(BLOCKSIZE_AUX);
         
         _MMR_f64    xpdSwapDiscountFactors;
         _MMR_f64    xpdSwapPayoffs;
@@ -277,4 +292,3 @@ int HJM_Swaption_Blocking(FTYPE *pdSwaptionPrice, //Output vector that will stor
   iSuccess = 1;
   return iSuccess;
 }
-

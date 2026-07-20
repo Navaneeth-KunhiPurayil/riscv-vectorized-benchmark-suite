@@ -339,7 +339,7 @@ if (hart_id ==0) {
   if (hart_id == 0) {
     stop_timer();
     int64_t cycles = get_timer();
-    int64_t total_ops = 3629 * nSwaptions * NUM_TRIALS; // 3629 is the number of vec. instructions executed
+    int64_t total_ops = 3629 * nSwaptions * NUM_TRIALS; // 3629 is the number of arithmetic vector instructions executed
     int64_t ops_per_lane = NR_LANES * NR_CLUSTERS * NR_CORES; // 1x 64-bit op per lane
     int64_t theoretical_cycles = (total_ops + ops_per_lane - 1) / ops_per_lane; // Ceiling division
     float utilization = 100.0 * (float)theoretical_cycles/(float)cycles;
