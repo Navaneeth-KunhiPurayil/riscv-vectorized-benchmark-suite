@@ -60,7 +60,7 @@ static annealer_thread a_threads[NR_CORES];
 #define USE_COMPILED_NETLIST
 #define CANNEAL_NUM_THREADS (NR_CORES)
 #define CANNEAL_SWAPS_PER_TEMP 100
-#define CANNEAL_START_TEMP 2000
+#define CANNEAL_START_TEMP 300     // Lesser temperature more likely a bad move will be rejected
 #define CANNEAL_NUM_TEMP_STEPS 10  // -1 means run until convergence
 
 void* entry_pt(void*);
