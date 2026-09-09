@@ -36,7 +36,7 @@
 
 #include <riscv_vector.h>
 
-inline _MMR_f64 __exp_1xf64(_MMR_f64 x ,unsigned long int gvl) {
+inline _MMR_f64 __exp_1xf64__(_MMR_f64 x ,unsigned long int gvl) {
 
 _MMR_f64   tmp;
 _MMR_f64   tmp2;
@@ -103,7 +103,7 @@ double One = 1.0;
         return y;
 }
 
-inline _MMR_f32 __exp_2xf32(_MMR_f32 x ,unsigned long int gvl) {
+inline _MMR_f32 __exp_2xf32__(_MMR_f32 x ,unsigned long int gvl) {
 
 _MMR_f32   tmp;
 _MMR_f32   tmp2;

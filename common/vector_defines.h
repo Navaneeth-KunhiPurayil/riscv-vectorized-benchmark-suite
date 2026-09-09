@@ -421,8 +421,8 @@
 #ifndef _MM_EXP
 #define _MM_EXP
 #include "__exp.h"
-#define _MM_EXP_f64 		__exp_1xf64
-#define _MM_EXP_f32 		__exp_2xf32
+#define _MM_EXP_f64 		__exp_1xf64__
+#define _MM_EXP_f32 		__exp_2xf32__
 #endif
 
 #ifndef _MM_COS
