@@ -65,13 +65,15 @@ int main(int hart_id){
 #else // !USE_RISCV_VECTOR
     spmv_serial(M_rows, a, &ia[M_start], ja, x, &y[M_start]);
 #endif
+
+    if (hart_id == 0)
+        stop_timer();
+
     asm volatile ("fence");
 
 #if NR_CORES > 1
     sync_barrier(); // all cores done writing y[]
 #endif
-    if (hart_id == 0)
-        stop_timer();
 
     if (hart_id == 0) {
         for(size_t i=0; i < M ; i++){
