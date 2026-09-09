@@ -4,12 +4,11 @@
 
 #define fp float
 
-// #define NUMBER_PAR_PER_BOX 10
 extern int NUMBER_PAR_PER_BOX;
 
 #define NUMBER_THREADS 128
 
-// #define MEASURE_PERFORMANCE
+#define MEASURE_PERFORMANCE
 
 #define DOT(A,B) ((A.x)*(B.x)+(A.y)*(B.y)+(A.z)*(B.z))	// STABLE
 

@@ -108,94 +108,15 @@ int main(int hart_id)
 	// assing default values
 	dim_cpu.cores_arg = cores;
 	dim_cpu.boxes1d_arg = boxes1d;
-	// char *outputFile;
-
-	// go through arguments
-	// for(dim_cpu.cur_arg=1; dim_cpu.cur_arg<argc; dim_cpu.cur_arg++){
-	// 	// check if -cores
-	// 	if(strcmp(argv[dim_cpu.cur_arg], "-cores")==0){
-	// 		// check if value provided
-	// 		if(argc>=dim_cpu.cur_arg+1){
-	// 			// check if value is a number
-	// 			if(isInteger(argv[dim_cpu.cur_arg+1])==1){
-	// 				dim_cpu.cores_arg = atoi(argv[dim_cpu.cur_arg+1]);
-	// 				if(dim_cpu.cores_arg<0){
-	// 					printf("ERROR: Wrong value to -cores parameter, cannot be <=0\n");
-	// 					return 0;
-	// 				}
-	// 				dim_cpu.cur_arg = dim_cpu.cur_arg+1;
-	// 			}
-	// 			// value is not a number
-	// 			else{
-	// 				printf("ERROR: Value to -cores parameter in not a number\n");
-	// 				return 0;
-	// 			}
-	// 		}
-	// 		// value not provided
-	// 		else{
-	// 			printf("ERROR: Missing value to -cores parameter\n");
-	// 			return 0;
-	// 		}
-	// 	}
-	// 	// check if -boxes1d
-	// 	else if(strcmp(argv[dim_cpu.cur_arg], "-boxes1d")==0){
-	// 		// check if value provided
-	// 		if(argc>=dim_cpu.cur_arg+1){
-	// 			// check if value is a number
-	// 			if(isInteger(argv[dim_cpu.cur_arg+1])==1){
-	// 				dim_cpu.boxes1d_arg = atoi(argv[dim_cpu.cur_arg+1]);
-	// 				if(dim_cpu.boxes1d_arg<0){
-	// 					printf("ERROR: Wrong value to -boxes1d parameter, cannot be <=0\n");
-	// 					return 0;
-	// 				}
-	// 				dim_cpu.cur_arg = dim_cpu.cur_arg+1;
-	// 			}
-	// 			// value is not a number
-	// 			else{
-	// 				printf("ERROR: Value to -boxes1d parameter in not a number\n");
-	// 				return 0;
-	// 			}
-	// 		}
-	// 		// value not provided
-	// 		else{
-	// 			printf("ERROR: Missing value to -boxes1d parameter\n");
-	// 			return 0;
-	// 		}
-	// 	}
-	// 	// check if -outputFile
-	// 	else if(strcmp(argv[dim_cpu.cur_arg], "-outputFile")==0){
-	// 		// check if value provided
-	// 		if(argc>=dim_cpu.cur_arg+1){
-	// 		// check if value is a number
-	// 			outputFile = argv[dim_cpu.cur_arg+1];
-	// 			dim_cpu.cur_arg = dim_cpu.cur_arg+1;
-	// 		}
-	// 		// value is not a number
-	// 		else{
-	// 			printf("ERROR: Missing output file name\n");
-	// 			return 0;
-	// 		}
-	// 	}
-	// 	// unknown
-	// 	else{
-	// 		printf("ERROR: Unknown parameter\n");
-	// 		return 0;
-	// 	}
-	// }
 
 	// Print configuration
 	printf("Configuration used: cores = %d, boxes1d = %d, NUMBER_PAR_PER_BOX = %d\n", dim_cpu.cores_arg, dim_cpu.boxes1d_arg, NUMBER_PAR_PER_BOX);
-	// printf("outputfile = %s \n", outputFile);
-
-	// time2 = get_time();
 
 	//======================================================================================================================================================150
 	//	INPUTS
 	//======================================================================================================================================================150
 
 	par_cpu.alpha = 0.5;
-
-	// time3 = get_time();
 
 	//======================================================================================================================================================150
 	//	DIMENSIONS
@@ -211,8 +132,6 @@ int main(int hart_id)
 
 	// box array
 	dim_cpu.box_mem = dim_cpu.number_boxes * sizeof(box_str);
-
-	// time4 = get_time();
 
 	//======================================================================================================================================================150
 	//	SYSTEM MEMORY
@@ -285,9 +204,6 @@ int main(int hart_id)
 	//	PARAMETERS, DISTANCE, CHARGE AND FORCE
 	//====================================================================================================100
 
-	// random generator seed set to random value - time in this case
-	// srand(get_timer());
-
 	// input (distances)
 	rv_cpu = (FOUR_VECTOR*)baremetal_malloc(dim_cpu.space_mem);
 	for(i=0; i<dim_cpu.space_elem; i=i+1){
@@ -312,41 +228,37 @@ int main(int hart_id)
 		fv_cpu[i].z = 0;								// set to 0, because kernels keeps adding to initial value
 	}
 
-	// time5 = get_time();
-
 	//======================================================================================================================================================150
 	//	PER-CORE BOX PARTITIONING
 	//======================================================================================================================================================150
 
-	{
-		long boxes_per_core = (dim_cpu.number_boxes + NR_CORES - 1) / NR_CORES;
-		for (int c = 0; c < NR_CORES; c++) {
-			long start_box = (long)c * boxes_per_core;
-			long end_box   = start_box + boxes_per_core;
-			if (end_box > dim_cpu.number_boxes)
-				end_box = dim_cpu.number_boxes;
-			long my_num_boxes = end_box - start_box;
+	long boxes_per_core = (dim_cpu.number_boxes + NR_CORES - 1) / NR_CORES;
+	for (int c = 0; c < NR_CORES; c++) {
+		long start_box = (long)c * boxes_per_core;
+		long end_box   = start_box + boxes_per_core;
+		if (end_box > dim_cpu.number_boxes)
+			end_box = dim_cpu.number_boxes;
+		long my_num_boxes = end_box - start_box;
 
-			// Allocate a full-size copy of box_cpu for this core.
-			// We pass (box_c + start_box) to kernel_cpu so that:
-			//   home box:  box_ptr[l]       = box_c[start_box + l]         (correct)
-			//   neighbor:  box_ptr[relative] = box_c[start_box + relative]  (correct)
-			// where relative = absolute - start_box, via pointer arithmetic.
-			box_str* box_c = (box_str*)baremetal_malloc(dim_cpu.number_boxes * sizeof(box_str));
-			memcpy(box_c, box_cpu, dim_cpu.number_boxes * sizeof(box_str));
+		// Allocate a full-size copy of box_cpu for this core.
+		// We pass (box_c + start_box) to kernel_cpu so that:
+		//   home box:  box_ptr[l]       = box_c[start_box + l]         (correct)
+		//   neighbor:  box_ptr[relative] = box_c[start_box + relative]  (correct)
+		// where relative = absolute - start_box, via pointer arithmetic.
+		box_str* box_c = (box_str*)baremetal_malloc(dim_cpu.box_mem);
+		memcpy(box_c, box_cpu, dim_cpu.box_mem);
 
-			// Remap nei.number in this core's home boxes from absolute to relative.
-			for (long b = 0; b < my_num_boxes; b++) {
-				box_str* hb = &box_c[start_box + b];
-				for (int ni = 0; ni < hb->nn; ni++) {
-					hb->nei[ni].number -= (int)start_box;
-				}
+		// Remap nei.number in this core's home boxes from absolute to relative.
+		for (long b = 0; b < my_num_boxes; b++) {
+			box_str* hb = &box_c[start_box + b];
+			for (int ni = 0; ni < hb->nn; ni++) {
+				hb->nei[ni].number -= (int)start_box;
 			}
-
-			per_core_box[c] = box_c + start_box;
-			per_core_dim[c] = dim_cpu;
-			per_core_dim[c].number_boxes = my_num_boxes;
 		}
+
+		per_core_box[c] = box_c + start_box;
+		per_core_dim[c] = dim_cpu;
+		per_core_dim[c].number_boxes = my_num_boxes;
 	}
 
 	//======================================================================================================================================================150
@@ -357,15 +269,12 @@ int main(int hart_id)
 	//	CPU/MCPU
 	//====================================================================================================100
 
-	// Start instruction and cycles count of the region of interest
-    //unsigned long cycles1, cycles2, instr2, instr1;
-    //instr1 = get_inst_count();
-    //cycles1 = get_cycles_count();
-
-	start_timer();
 	} // end if (hart_id == 0) -- setup and timer start
 
 	sync_barrier();
+
+	if (hart_id == 0)
+		start_timer();
 
 	kernel_cpu(	par_cpu,
 				per_core_dim[hart_id],
@@ -374,87 +283,32 @@ int main(int hart_id)
 				qv_cpu,
 				fv_cpu);
 
+	if (hart_id == 0)
+		stop_timer();
+
 	sync_barrier();
 
 	if (hart_id == 0) {
-	stop_timer();
 
-	int64_t cycles = get_timer();
+		int64_t cycles = get_timer();
 #ifdef MEASURE_PERFORMANCE
-	int64_t total_ops = 16 * NUMBER_PAR_PER_BOX * 36; // 36 vec. insn. within inner most loop
+		int64_t total_ops = 16 * NUMBER_PAR_PER_BOX * 36; // 36 vec. insn. within inner most loop
 #else
-	int64_t total_ops = NUMBER_PAR_PER_BOX * NUMBER_PAR_PER_BOX * 36; // 36 vec. insn. within inner most loop
+		int64_t total_ops = NUMBER_PAR_PER_BOX * NUMBER_PAR_PER_BOX * 36; // 36 vec. insn. within inner most loop
 #endif
-	int64_t ops_per_cycle = 2 * NR_LANES * NR_CLUSTERS; // 2x 32-bit ops per lane
-	int64_t theoretical_cycles = (total_ops + ops_per_cycle - 1) / ops_per_cycle; // Ceiling division
-	float utilization = 100.0 * (float)theoretical_cycles/(float)cycles;
+		int64_t ops_per_cycle = 2 * NR_LANES * NR_CLUSTERS * NR_CORES; // 2x 32-bit ops per lane
+		int64_t theoretical_cycles = (total_ops + ops_per_cycle - 1) / ops_per_cycle; // Ceiling division
+		float utilization = 100.0 * (float)theoretical_cycles/(float)cycles;
 
-	printf("Finished kernel [sw-cycles]=%ld util:%f%%\n", cycles, utilization);
-
-	// End instruction and cycles count of the region of interest
-    //instr2 = get_inst_count();
-    //cycles2 = get_cycles_count();
-    // Instruction and cycles count of the region of interest
-    //printf("-CSR   NUMBER OF EXEC CYCLES :%lu\n", cycles2 - cycles1);
-    //printf("-CSR   NUMBER OF INSTRUCTIONS EXECUTED :%lu\n", instr2 - instr1);
-
-	// time6 = get_time();
-
-	//======================================================================================================================================================150
-	//	SYSTEM MEMORY DEALLOCATION
-	//======================================================================================================================================================150
-
-	// dump results
-    // FILE *file;
-
-	// file = fopen(outputFile, "w");
-	// if(file == NULL) {
-    //   printf("ERROR: Unable to open file `%s'.\n", outputFile);
-    //   exit(1);
-    // }
-	//if (time6 > 0) {
-	//	printf("end\n");
-	//	return 0;
-	//}
+		printf("Finished kernel [sw-cycles]=%ld util:%f%%\n", cycles, utilization);
 
 #ifdef PRINT_RESULT
-	for(i=0; i<dim_cpu.space_elem; i=i+1){
-        printf("%f, %f, %f, %f\n", fv_cpu[i].v, fv_cpu[i].x, fv_cpu[i].y, fv_cpu[i].z);
-	}
+		for(i=0; i<dim_cpu.space_elem; i=i+1){
+			printf("%f, %f, %f, %f\n", fv_cpu[i].v, fv_cpu[i].x, fv_cpu[i].y, fv_cpu[i].z);
+		}
 #endif
-
-	// free(rv_cpu);
-	// free(qv_cpu);
-	// free(fv_cpu);
-	// free(box_cpu);
-
-	// time7 = get_time();
 
 	} // end if (hart_id == 0) -- output
 
-	//======================================================================================================================================================150
-	//	DISPLAY TIMING
-	//======================================================================================================================================================150
-
-	// printf("Time spent in different stages of the application:\n");
-
-	// printf("%15.12f s, %15.12f % : VARIABLES\n",						(float) (time1-time0) / 1000000, (float) (time1-time0) / (float) (time7-time0) * 100);
-	// printf("%15.12f s, %15.12f % : INPUT ARGUMENTS\n", 					(float) (time2-time1) / 1000000, (float) (time2-time1) / (float) (time7-time0) * 100);
-	// printf("%15.12f s, %15.12f % : INPUTS\n",							(float) (time3-time2) / 1000000, (float) (time3-time2) / (float) (time7-time0) * 100);
-	// printf("%15.12f s, %15.12f % : dim_cpu\n", 							(float) (time4-time3) / 1000000, (float) (time4-time3) / (float) (time7-time0) * 100);
-	// printf("%15.12f s, %15.12f % : SYS MEM: ALO\n",						(float) (time5-time4) / 1000000, (float) (time5-time4) / (float) (time7-time0) * 100);
-
-	// printf("%15.12f s, %15.12f % : KERNEL: COMPUTE\n",					(float) (time6-time5) / 1000000, (float) (time6-time5) / (float) (time7-time0) * 100);
-
-	// printf("%15.12f s, %15.12f % : SYS MEM: FRE\n", 					(float) (time7-time6) / 1000000, (float) (time7-time6) / (float) (time7-time0) * 100);
-
-	// printf("Total time:\n");
-	// printf("%.12f s\n", 												(float) (time7-time0) / 1000000);
-
-	//======================================================================================================================================================150
-	//	RETURN
-	//======================================================================================================================================================150
-
 	return 0;																					// always returns 0.0
-
 }
