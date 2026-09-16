@@ -220,7 +220,7 @@ void run_vector(int hart_id)
             }
 
 #if NR_CORES > 1
-            sync_barrier(); // all writes done; next t may read
+            flush_sync_barrier(); // all writes done; next t may read
 #endif
         }
     }
