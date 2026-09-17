@@ -310,5 +310,7 @@ int main(int hart_id)
 
 	} // end if (hart_id == 0) -- output
 
+	sync_barrier();
+
 	return 0;																					// always returns 0.0
 }
