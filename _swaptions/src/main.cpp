@@ -53,7 +53,6 @@ parm *swaptions;
 
 long seed = 1979; //arbitrary (but constant) default value (birth year of Christian Bienia)
 long swaption_seed;
-long *swaption_seed_vector;
 
 
 
@@ -114,6 +113,7 @@ void * worker(void *arg){
     end = nSwaptions;
 
   int BLOCK_SIZE_AUX;
+  long *swaption_seed_vector;
   // 1 run for every swaption, HJM_Swaption_Blocking kernel can be vectorized because is related to Number of Simulations
   for(int i=beg; i < end; i++) {
 
