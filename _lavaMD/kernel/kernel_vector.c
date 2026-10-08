@@ -123,7 +123,11 @@ void  kernel_cpu(	par_str par,
 	//			private(first_i, rA, fA) \
 	//			private(pointer, first_j, rB, qB) \
 	//			private(r2, u2, fs, vij, fxij, fyij, fzij, d)
+#ifdef MEASURE_PERFORMANCE
+	for(l=0; l<1; l=l+1){
+#else
 	for(l=0; l<dim.number_boxes; l=l+1){
+#endif
 
 		//------------------------------------------------------------------------------------------100
 		//	home box - box parameters
@@ -141,7 +145,11 @@ void  kernel_cpu(	par_str par,
 		//------------------------------------------------------------------------------------------100
 		//	Do for the # of (home+neighbor) boxes
 		//------------------------------------------------------------------------------------------100
+#ifdef MEASURE_PERFORMANCE
+		for (k=0; k<1; k++)
+#else
 		for (k=0; k<(1+box[l].nn); k++)
+#endif
 		{
 
 			//----------------------------------------50
@@ -181,7 +189,7 @@ void  kernel_cpu(	par_str par,
 			_MMR_f32 xfA_1_v, xfA_1_x, xfA_1_y, xfA_1_z;
 
 #ifdef MEASURE_PERFORMANCE
-			for (i=0; i<16; i=i+1){
+			for (i=0; i<(16/NR_CORES); i=i+1){
 #else
 			for (i=0; i<NUMBER_PAR_PER_BOX; i=i+1){
 #endif
