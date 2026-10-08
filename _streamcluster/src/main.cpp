@@ -223,7 +223,6 @@ void intshuffle(int *intarray, int length)
 /* compute Euclidean distance squared between two points */
 float dist(Point p1, Point p2, int dim, int hart_id)
 {
-  cnt_dist_increment(hart_id);
 
 #ifdef USE_RISCV_VECTOR
   float result=0.0;
@@ -488,6 +487,8 @@ double pgain(long x, Points *points, double z, long int *numcenters, int pid, pt
   
   // printf("ppgain pthread %d feasible=%lu z=%lf num centers=%d begin\n",pid, x, z, *numcenters);
   sync_barrier();
+  if (pid == 0) start_timer();
+
   //my block
   long bsize = points->num/nproc;
   long k1 = bsize * pid;
@@ -694,6 +695,13 @@ double pgain(long x, Points *points, double z, long int *numcenters, int pid, pt
   }
 
   flush_sync_barrier();
+  if (pid == 0) {
+    stop_timer();
+    long sw_cycles = get_timer();
+    float utilization = ((CHUNKSIZE * DIM * 2) * 100.0 / (2 * NR_LANES * NR_CLUSTERS * NR_CORES)) / (float)sw_cycles;
+    printf("Time for pgain [sw-cycles]:%ld util:%f%%\n", sw_cycles, utilization);
+  }
+
   return -gl_cost_of_opening_x;
 }
 
@@ -1015,9 +1023,7 @@ float pkmedian(Points *points, long kmin, long kmax, long* kfinal,
     printf_("Finished pspeedy: pid=%d numfeasible=%d z=%f cost=%lf\n", pid, numfeasible, z, cost);
     flush_sync_barrier();
 #endif
-  
-  if (pid == 0) 
-    start_timer();
+
 
   while(1) {
 
@@ -1072,22 +1078,6 @@ float pkmedian(Points *points, long kmin, long kmax, long* kfinal,
     sync_barrier();
   }
 
-  flush_sync_barrier();
-  // Print Stats
-  if (pid == 0) {
-    stop_timer();
-
-    int64_t cycles = get_timer();
-    int total_dist = cnt_dist_total();
-    int64_t total_ops = total_dist * DIM * 2; // each distance computation involves 2 floating point ops (sub and mac)
-    int64_t ops_per_cycle = 2 * NR_LANES * NR_CLUSTERS * NR_CORES; // 2x 32-bit ops / lane
-    int64_t theoretical_cycles = (total_ops + ops_per_cycle - 1) / ops_per_cycle; // ceiling division
-    float utilization = 100.0 * (float) theoretical_cycles / (float)cycles;
-    if (pid == 0) {
-      printf("pFL [sw-cycles]: %ld cnt:%d util:%f%%\n", cycles, total_dist, utilization);
-      cnt_dist_reset_all();
-    }
-  }
   flush_sync_barrier();
   
   //clean up...
