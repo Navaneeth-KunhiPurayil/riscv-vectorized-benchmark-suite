@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import sys, os
+from collections import Counter
 sys.path.insert(0, os.path.dirname(__file__))
 from gen_data import read_canneal_input, build_index_data
 
@@ -36,3 +37,12 @@ print()
 print(f'Avg fanin:    {sum(fanin_counts)/total_used:.2f}')
 print(f'Avg fanout:   {sum(fanout_counts)/total_used:.2f}')
 print(f'Avg fan_locs: {sum(fanlocs_counts)/total_used:.2f}')
+
+# fan_locs length is the vector length used by swap_cost_vector at runtime.
+print()
+print('Vector length (fan_locs) distribution:')
+distribution = Counter(fanlocs_counts)
+for length in sorted(distribution):
+    count = distribution[length]
+    pct = 100.0 * count / total_used
+    print(f'  len={length:<4d} count={count:<6d} ({pct:5.2f}%)')
